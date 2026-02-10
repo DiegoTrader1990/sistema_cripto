@@ -1,7 +1,8 @@
 'use client';
 
 import { ReactNode, useEffect, useMemo, useState } from 'react';
-import GridLayout, { Layout, WidthProvider } from 'react-grid-layout';
+import GridLayout, { WidthProvider } from 'react-grid-layout';
+import type { Layout } from 'react-grid-layout';
 import styles from '@/components/grid.module.css';
 
 const WGrid = WidthProvider(GridLayout);
