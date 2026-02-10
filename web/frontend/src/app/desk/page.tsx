@@ -48,7 +48,9 @@ export default function DeskPage() {
     setErr(null);
     setOptErr(null);
     try {
-      const data = await apiGet(`/api/desk/ohlc?instrument=${encodeURIComponent(instrument)}&tf=${encodeURIComponent(tf)}&candles=${candles}`);
+      const data = await apiGet(
+        `/api/desk/ohlc?instrument=${encodeURIComponent(instrument)}&tf=${encodeURIComponent(tf)}&candles=${candles}`
+      );
       setOhlc(data.ohlc);
     } catch (e: any) {
       setErr(String(e?.message || e));
@@ -67,13 +69,14 @@ export default function DeskPage() {
       const chosen = expiry || exs[0] || '';
       setExpiry(chosen);
       if (chosen) {
-        const cg = await apiGet(`/api/desk/chain?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}&expiry=${encodeURIComponent(chosen)}`);
+        const cg = await apiGet(
+          `/api/desk/chain?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}&expiry=${encodeURIComponent(chosen)}`
+        );
         setFlip(cg.flip ?? null);
         setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
         const chainRows = cg.chain || [];
         setChain(chainRows);
 
-        // backend may not have per_strike yet (deploy lag); fallback: build from chain
         const ps = (cg.per_strike || []) as any[];
         if (ps && ps.length) {
           setPerStrike(ps);
@@ -106,17 +109,16 @@ export default function DeskPage() {
 
   const byStrike = useMemo(() => {
     const m = new Map<number, any>();
-    for (const r of perStrike || []) m.set(Number(r.strike), r);
+    for (const rr of perStrike || []) m.set(Number(rr.strike), rr);
     return m;
   }, [perStrike]);
 
   const strikeRows = useMemo(() => {
-    // attempt to find spot from last close
     const spot = last || 0;
     if (!spot) return Array.from(byStrike.values());
     const lo = spot * (1 - strikeRangePct / 100);
     const hi = spot * (1 + strikeRangePct / 100);
-    return Array.from(byStrike.values()).filter((r) => Number(r.strike) >= lo && Number(r.strike) <= hi);
+    return Array.from(byStrike.values()).filter((rr) => Number(rr.strike) >= lo && Number(rr.strike) <= hi);
   }, [byStrike, last, strikeRangePct]);
 
   const selected = useMemo(() => {
@@ -128,9 +130,12 @@ export default function DeskPage() {
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold">Desk</h1>
-        <a className="text-sm text-slate-400 hover:text-slate-200" href="/login">(trocar login)</a>
-        {/* Altcoins hidden */}
-        <a className="text-sm text-slate-400 hover:text-slate-200" href="/news">News</a>
+        <a className="text-sm text-slate-400 hover:text-slate-200" href="/login">
+          (trocar login)
+        </a>
+        <a className="text-sm text-slate-400 hover:text-slate-200" href="/news">
+          News
+        </a>
       </div>
 
       <div className="mt-4 flex gap-3 items-center flex-wrap">
@@ -160,7 +165,9 @@ export default function DeskPage() {
           onChange={(e) => setCandles(parseInt(e.target.value || '900', 10))}
         />
 
-        <button className="bg-blue-600 hover:bg-blue-500 rounded px-3 py-1" onClick={refresh}>Atualizar</button>
+        <button className="bg-blue-600 hover:bg-blue-500 rounded px-3 py-1" onClick={refresh}>
+          Atualizar
+        </button>
 
         <label className="text-sm text-slate-300">GEX</label>
         <input type="checkbox" checked={gexOn} onChange={(e) => setGexOn(e.target.checked)} />
@@ -169,7 +176,9 @@ export default function DeskPage() {
         <label className="text-sm text-slate-300">Expiry</label>
         <select className="bg-slate-900 border border-slate-800 rounded px-2 py-1" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
           {expiries.map((e) => (
-            <option key={e} value={e}>{e}</option>
+            <option key={e} value={e}>
+              {e}
+            </option>
           ))}
         </select>
 
@@ -204,7 +213,9 @@ export default function DeskPage() {
                       gexOn
                         ? [
                             ...(flip ? [{ price: Number(flip), label: 'FLIP', color: 'rgba(34, 197, 94, 0.75)' }] : []),
-                            ...(selectedStrike ? [{ price: Number(selectedStrike), label: 'SEL', color: 'rgba(59, 130, 246, 0.90)' }] : []),
+                            ...(selectedStrike
+                              ? [{ price: Number(selectedStrike), label: 'SEL', color: 'rgba(59, 130, 246, 0.90)' }]
+                              : []),
                             ...gexLevels.map((x) => ({ price: Number(x.strike), label: 'WALL', color: 'rgba(168, 85, 247, 0.65)' })),
                           ]
                         : []
@@ -243,16 +254,20 @@ export default function DeskPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {strikeRows.map((r: any) => (
+                        {strikeRows.map((rr: any) => (
                           <tr
-                            key={r.strike}
-                            className={`border-b border-slate-900 hover:bg-slate-900/40 cursor-pointer ${selectedStrike === r.strike ? 'bg-slate-900/50' : ''}`}
-                            onClick={() => setSelectedStrike(Number(r.strike))}
+                            key={rr.strike}
+                            className={`border-b border-slate-900 hover:bg-slate-900/40 cursor-pointer ${selectedStrike === rr.strike ? 'bg-slate-900/50' : ''}`}
+                            onClick={() => setSelectedStrike(Number(rr.strike))}
                           >
-                            <td className="p-2 text-slate-200">{r.call?.bid_price ?? '—'} / {r.call?.ask_price ?? '—'} · {r.call?.mark_iv ?? '—'} · {r.call?.open_interest ?? '—'}</td>
-                            <td className="p-2 text-slate-100 font-semibold">{Number(r.strike).toFixed(0)}</td>
-                            <td className="p-2 text-slate-200">{r.put?.bid_price ?? '—'} / {r.put?.ask_price ?? '—'} · {r.put?.mark_iv ?? '—'} · {r.put?.open_interest ?? '—'}</td>
-                            <td className="p-2 text-slate-400">{Number(r.net_gex || 0).toFixed(2)}</td>
+                            <td className="p-2 text-slate-200">
+                              {rr.call?.bid_price ?? '—'} / {rr.call?.ask_price ?? '—'} · {rr.call?.mark_iv ?? '—'} · {rr.call?.open_interest ?? '—'}
+                            </td>
+                            <td className="p-2 text-slate-100 font-semibold">{Number(rr.strike).toFixed(0)}</td>
+                            <td className="p-2 text-slate-200">
+                              {rr.put?.bid_price ?? '—'} / {rr.put?.ask_price ?? '—'} · {rr.put?.mark_iv ?? '—'} · {rr.put?.open_interest ?? '—'}
+                            </td>
+                            <td className="p-2 text-slate-400">{Number(rr.net_gex || 0).toFixed(2)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -285,20 +300,44 @@ export default function DeskPage() {
                   </div>
 
                   <div className="mt-3 text-sm">
-                    <div><span className="text-slate-400">Flip:</span> {flip ?? '—'}</div>
-                    <div><span className="text-slate-400">Strike selecionado:</span> {selectedStrike ?? '—'}</div>
+                    <div>
+                      <span className="text-slate-400">Flip:</span> {flip ?? '—'}
+                    </div>
+                    <div>
+                      <span className="text-slate-400">Strike selecionado:</span> {selectedStrike ?? '—'}
+                    </div>
+                    {selected ? (
+                      <div className="mt-2 text-xs text-slate-300 bg-slate-950/40 border border-slate-800 rounded p-3">
+                        <div className="font-semibold">Detalhes do Strike</div>
+                        <div className="mt-1">Net GEX: {Number(selected.net_gex || 0).toFixed(2)}</div>
+                        <div>
+                          Call: bid {selected.call?.bid_price ?? '—'} / ask {selected.call?.ask_price ?? '—'} / IV {selected.call?.mark_iv ?? '—'} / OI {selected.call?.open_interest ?? '—'}
+                        </div>
+                        <div>
+                          Put: bid {selected.put?.bid_price ?? '—'} / ask {selected.put?.ask_price ?? '—'} / IV {selected.put?.mark_iv ?? '—'} / OI {selected.put?.open_interest ?? '—'}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="mt-3 flex items-center gap-2 flex-wrap">
                     <label className="text-xs text-slate-400">Alvo (%)</label>
-                    <input className="bg-slate-900 border border-slate-800 rounded px-2 py-1 w-24" type="number" step="0.1" value={planTargetPct} onChange={(e)=>setPlanTargetPct(parseFloat(e.target.value||'1.5'))} />
+                    <input
+                      className="bg-slate-900 border border-slate-800 rounded px-2 py-1 w-24"
+                      type="number"
+                      step="0.1"
+                      value={planTargetPct}
+                      onChange={(e) => setPlanTargetPct(parseFloat(e.target.value || '1.5'))}
+                    />
                   </div>
 
                   <div className="mt-3 text-xs text-slate-300 bg-slate-950/40 border border-slate-800 rounded p-3">
                     {selectedStrike ? (
                       <>
                         <div className="font-semibold">Plano:</div>
-                        <div>Comprar CALL + PUT no strike {selectedStrike} (expiry {expiry}).</div>
+                        <div>
+                          Comprar CALL + PUT no strike {selectedStrike} (expiry {expiry}).
+                        </div>
                         <div>Objetivo: capturar ~±{planTargetPct}% de variação do spot.</div>
                       </>
                     ) : (
@@ -311,7 +350,14 @@ export default function DeskPage() {
             {
               key: 'paper',
               title: 'Caixa / Simulador',
-              node: <PaperBoxCard selected={selectedStrike ? { strike: Number(selectedStrike), ...(selected || {}) } : null} expiry={expiry} spot={Number(last || 0)} targetPct={planTargetPct} />,
+              node: (
+                <PaperBoxCard
+                  selected={selectedStrike ? { strike: Number(selectedStrike), ...(selected || {}) } : null}
+                  expiry={expiry}
+                  spot={Number(last || 0)}
+                  targetPct={planTargetPct}
+                />
+              ),
             },
             {
               key: 'news',
@@ -320,64 +366,6 @@ export default function DeskPage() {
             },
           ]}
         />
-      </div>
-
-      <div className="mt-6">
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
-            <div className="text-sm font-semibold">Operacional (Long Strangle)</div>
-            <div className="text-xs text-slate-500 mt-1">Clique no gráfico para selecionar o nível GEX mais próximo. Se o clique não funcionar, use a lista de níveis abaixo.</div>
-            {optErr ? <div className="mt-2 text-xs text-amber-400">GEX/Chain: {optErr}</div> : null}
-
-            <div className="mt-3">
-              <div className="text-xs text-slate-400">Níveis (walls):</div>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                {(gexLevels || []).slice(0, 10).map((lv) => (
-                  <button
-                    key={lv.strike}
-                    className="text-xs bg-slate-950/40 border border-slate-800 rounded px-2 py-1 hover:border-slate-600"
-                    onClick={() => setSelectedStrike(Number(lv.strike))}
-                  >
-                    {Number(lv.strike).toFixed(0)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-3 text-sm">
-              <div><span className="text-slate-400">Flip:</span> {flip ?? '—'}</div>
-              <div><span className="text-slate-400">Strike selecionado:</span> {selectedStrike ?? '—'}</div>
-              {selected ? (
-                <div className="mt-2 text-xs text-slate-300 bg-slate-950/40 border border-slate-800 rounded p-3">
-                  <div className="font-semibold">Detalhes do Strike</div>
-                  <div className="mt-1">Net GEX: {Number(selected.net_gex || 0).toFixed(2)}</div>
-                  <div>Call: bid {selected.call?.bid_price ?? '—'} / ask {selected.call?.ask_price ?? '—'} / IV {selected.call?.mark_iv ?? '—'} / OI {selected.call?.open_interest ?? '—'}</div>
-                  <div>Put: bid {selected.put?.bid_price ?? '—'} / ask {selected.put?.ask_price ?? '—'} / IV {selected.put?.mark_iv ?? '—'} / OI {selected.put?.open_interest ?? '—'}</div>
-                </div>
-              ) : null}
-            </div>
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <label className="text-xs text-slate-400">Alvo (%)</label>
-              <input className="bg-slate-900 border border-slate-800 rounded px-2 py-1 w-24" type="number" step="0.1" value={planTargetPct} onChange={(e)=>setPlanTargetPct(parseFloat(e.target.value||'1.5'))} />
-            </div>
-            <div className="mt-3 text-xs text-slate-300 bg-slate-950/40 border border-slate-800 rounded p-3">
-              {selectedStrike ? (
-                <>
-                  <div className="font-semibold">Plano:</div>
-                  <div>Comprar CALL + PUT no strike {selectedStrike} (expiry {expiry}).</div>
-                  <div>Objetivo: capturar ~±{planTargetPct}% de variação do spot.</div>
-                </>
-              ) : (
-                <div>Selecione um nível (ligue GEX e clique no gráfico).</div>
-              )}
-            </div>
-          </div>
-          <PaperBoxCard selected={selectedStrike ? { strike: Number(selectedStrike), ...(selected || {}) } : null} expiry={expiry} spot={Number(last || 0)} targetPct={planTargetPct} />
-
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
-            <div className="text-sm font-semibold">News</div>
-            <div className="text-xs text-slate-500 mt-1">Abra a aba News para ler dentro do sistema.</div>
-          </div>
-        </div>
       </div>
     </main>
   );
