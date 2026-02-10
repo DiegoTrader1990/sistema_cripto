@@ -81,12 +81,23 @@ def get_user(req: Request) -> dict:
 
 app = FastAPI(title=APP_NAME)
 
+# -------------------- CORS --------------------
+# Vercel runs on https://*.vercel.app. Render backend must allow it.
+# You can also provide a comma-separated allowlist via CRYPT_CORS_ORIGINS.
+_extra_origins = [
+    x.strip()
+    for x in (os.environ.get("CRYPT_CORS_ORIGINS", "") or "").split(",")
+    if x.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        *(_extra_origins or []),
     ],
+    allow_origin_regex=r"https://.*\\.vercel\\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
