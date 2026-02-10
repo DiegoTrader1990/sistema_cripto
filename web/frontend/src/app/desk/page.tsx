@@ -143,6 +143,7 @@ export default function DeskPage() {
         </a>
         <a className="text-sm text-slate-400 hover:text-slate-200" href="/news">News</a>
         <a className="text-sm text-slate-400 hover:text-slate-200" href="/report">Relatório</a>
+        <a className="text-sm text-slate-400 hover:text-slate-200" href="/help">Tutorial</a>
       </div>
 
       <div className="mt-4 flex gap-3 items-center flex-wrap">
