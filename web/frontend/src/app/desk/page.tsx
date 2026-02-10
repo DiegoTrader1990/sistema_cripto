@@ -7,6 +7,7 @@ import CandlesChart, { type Ohlc } from '@/components/CandlesChart';
 import PaperBoxCard from '@/components/PaperBoxCard';
 import GridDeskLayout from '@/components/GridDeskLayout';
 import StrategyPlannerCard from '@/components/StrategyPlannerCard';
+import SpotPulseCard from '@/components/SpotPulseCard';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
@@ -28,6 +29,8 @@ export default function DeskPage() {
   const [instrument, setInstrument] = useState('BTC-PERPETUAL');
   const [tf, setTf] = useState('60');
   const [candles, setCandles] = useState(900);
+  const [liveOn, setLiveOn] = useState<boolean>(true);
+  const [liveSec, setLiveSec] = useState<number>(8);
   const [ohlc, setOhlc] = useState<OhlcWithVol | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -104,6 +107,16 @@ export default function DeskPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instrument, tf, candles]);
 
+  useEffect(() => {
+    if (!liveOn) return;
+    const ms = Math.max(3000, Math.min(60000, Number(liveSec || 8) * 1000));
+    const t = setInterval(() => {
+      refresh();
+    }, ms);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveOn, liveSec, instrument, tf, candles, expiry, gexOn]);
+
   const last = useMemo(() => {
     if (!ohlc?.c?.length) return null;
     return ohlc.c[ohlc.c.length - 1];
@@ -176,6 +189,14 @@ export default function DeskPage() {
         <button className="bg-blue-600 hover:bg-blue-500 rounded px-3 py-1" onClick={refresh}>
           Atualizar
         </button>
+
+        <label className="text-sm text-slate-300">Live</label>
+        <input type="checkbox" checked={liveOn} onChange={(e) => setLiveOn(e.target.checked)} />
+        <select className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs" value={liveSec} onChange={(e)=>setLiveSec(parseInt(e.target.value||'8',10))}>
+          <option value={4}>4s</option>
+          <option value={8}>8s</option>
+          <option value={15}>15s</option>
+        </select>
 
         <label className="text-sm text-slate-300">GEX</label>
         <input type="checkbox" checked={gexOn} onChange={(e) => setGexOn(e.target.checked)} />
@@ -302,7 +323,8 @@ export default function DeskPage() {
               title: 'Operacional (Long Strangle)',
               node: (
                 <div>
-                  <div className="text-xs text-slate-500">Clique no gráfico para selecionar o nível GEX mais próximo. Se o clique não funcionar, use a lista de níveis abaixo.</div>
+                  <SpotPulseCard spot={Number(last || 0)} selectedStrike={selectedStrike} flip={flip} targetPct={planTargetPct} />
+                  <div className="mt-3 text-xs text-slate-500">Clique no gráfico para selecionar o nível GEX mais próximo. Se o clique não funcionar, use a lista de níveis abaixo.</div>
                   {optErr ? <div className="mt-2 text-xs text-amber-400">GEX/Chain: {optErr}</div> : null}
 
                   <div className="mt-3">

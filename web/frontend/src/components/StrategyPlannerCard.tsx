@@ -27,6 +27,38 @@ function pct(a: number, b: number) {
   return (a / b - 1) * 100;
 }
 
+// Normal CDF approximation (via erf)
+function erf(x: number) {
+  // Abramowitz and Stegun approximation
+  const sign = x < 0 ? -1 : 1;
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+  const ax = Math.abs(x);
+  const t = 1.0 / (1.0 + p * ax);
+  const y = 1.0 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t) * Math.exp(-ax * ax);
+  return sign * y;
+}
+
+function normCdf(x: number) {
+  return 0.5 * (1 + erf(x / Math.SQRT2));
+}
+
+function hoursToExpiry(expiry: string) {
+  // expiry is YYYY-MM-DD (UTC date). Approx treat as end of day UTC.
+  try {
+    const [Y, M, D] = expiry.split('-').map((n) => parseInt(n, 10));
+    const endUtc = Date.UTC(Y, (M || 1) - 1, D || 1, 23, 59, 59);
+    const h = (endUtc - Date.now()) / 3600000;
+    return Math.max(0, h);
+  } catch {
+    return 0;
+  }
+}
+
 export default function StrategyPlannerCard({
   selectedStrike,
   selected,
@@ -132,6 +164,38 @@ export default function StrategyPlannerCard({
 
   const ok = Boolean(selectedStrike && selected?.call && selected?.put && spot);
 
+  const prob = useMemo(() => {
+    if (!ok) return null;
+    const h = hoursToExpiry(expiry);
+    const T = Math.max(1 / 365 / 24, h / (365 * 24));
+
+    const ivCall = Number(callT?.mark_iv ?? selected?.call?.mark_iv ?? 0);
+    const ivPut = Number(putT?.mark_iv ?? selected?.put?.mark_iv ?? 0);
+    const iv = (ivCall > 0 && ivPut > 0) ? (ivCall + ivPut) / 2 : (ivCall || ivPut || 0);
+
+    // Deribit mark_iv appears in % terms (commonly like 60 for 60%).
+    const ivDec = iv > 3 ? iv / 100 : iv;
+    const sigma = Math.max(1e-6, ivDec * Math.sqrt(T));
+
+    const target = Math.abs(Number(targetPct || 0)) / 100;
+    const zTarget = target / sigma;
+    const pTarget = Math.max(0, Math.min(1, 2 * (1 - normCdf(zTarget))));
+
+    // breakeven threshold in % move approx: cost/spot
+    const costPct = spot ? (Number(premiums.totalUsd || 0) / Number(spot || 1)) : 0;
+    const zBE = costPct / sigma;
+    const pBE = Math.max(0, Math.min(1, 2 * (1 - normCdf(zBE))));
+
+    return {
+      hours: h,
+      iv,
+      sigma,
+      costPct,
+      pTarget,
+      pBE,
+    };
+  }, [ok, expiry, callT, putT, selected, targetPct, spot, premiums.totalUsd]);
+
   return (
     <div className="h-full">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -203,6 +267,26 @@ export default function StrategyPlannerCard({
               <div className="text-sm font-semibold">Plano (BUY CALL + BUY PUT no mesmo strike)</div>
               <div className="text-xs text-slate-400">Expiry: {expiry || '—'} · Target: {targetPct.toFixed(2)}%</div>
             </div>
+
+            {prob ? (
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-2">
+                  <div className="text-[11px] text-slate-400">IV (aprox)</div>
+                  <div className="text-sm font-semibold">{prob.iv.toFixed(1)}%</div>
+                  <div className="text-[11px] text-slate-500">T: {prob.hours.toFixed(1)}h</div>
+                </div>
+                <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-2">
+                  <div className="text-[11px] text-slate-400">Prob. mover ≥ alvo</div>
+                  <div className="text-sm font-semibold">{(prob.pTarget * 100).toFixed(1)}%</div>
+                  <div className="text-[11px] text-slate-500">alvo: ±{targetPct.toFixed(2)}%</div>
+                </div>
+                <div className="bg-slate-900/30 border border-slate-800 rounded-xl p-2">
+                  <div className="text-[11px] text-slate-400">Prob. ≥ breakeven</div>
+                  <div className="text-sm font-semibold">{(prob.pBE * 100).toFixed(1)}%</div>
+                  <div className="text-[11px] text-slate-500">custo: {(prob.costPct * 100).toFixed(2)}%</div>
+                </div>
+              </div>
+            ) : null}
             <div className="mt-2 grid grid-cols-3 gap-2">
               <div>
                 <div className="text-[11px] text-slate-400">Custo total (USD)</div>
