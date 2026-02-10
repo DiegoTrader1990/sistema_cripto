@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Modal from '@/components/Modal';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
-
-import Modal from '@/components/Modal';
 
 type NewsItem = {
   ts: number;
