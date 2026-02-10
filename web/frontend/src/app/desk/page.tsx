@@ -162,6 +162,7 @@ export default function DeskPage() {
 
         <label className="text-sm text-slate-300">GEX</label>
         <input type="checkbox" checked={gexOn} onChange={(e) => setGexOn(e.target.checked)} />
+        <div className="text-xs text-slate-500">levels: {gexLevels.length}</div>
 
         <label className="text-sm text-slate-300">Expiry</label>
         <select className="bg-slate-900 border border-slate-800 rounded px-2 py-1" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
@@ -192,7 +193,15 @@ export default function DeskPage() {
           <div className="mt-3">
             <CandlesChart
               ohlc={ohlc}
-              levels={gexOn ? gexLevels.map((x) => ({ price: x.strike, label: 'GEX', color: 'rgba(168, 85, 247, 0.6)' })) : []}
+              levels={
+                gexOn
+                  ? [
+                      ...(flip ? [{ price: Number(flip), label: 'FLIP', color: 'rgba(34, 197, 94, 0.75)' }] : []),
+                      ...(selectedStrike ? [{ price: Number(selectedStrike), label: 'SEL', color: 'rgba(59, 130, 246, 0.85)' }] : []),
+                      ...gexLevels.map((x) => ({ price: Number(x.strike), label: 'WALL', color: 'rgba(168, 85, 247, 0.55)' })),
+                    ]
+                  : []
+              }
               onPickPrice={(p) => {
                 if (!gexLevels.length) return;
                 let best = gexLevels[0];
@@ -216,9 +225,9 @@ export default function DeskPage() {
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-slate-950 border-b border-slate-800">
                   <tr>
-                    <th className="text-left p-2">Call bid/ask</th>
+                    <th className="text-left p-2">Call (bid/ask · IV · OI)</th>
                     <th className="text-left p-2">Strike</th>
-                    <th className="text-left p-2">Put bid/ask</th>
+                    <th className="text-left p-2">Put (bid/ask · IV · OI)</th>
                     <th className="text-left p-2">NetGEX</th>
                   </tr>
                 </thead>
@@ -229,9 +238,9 @@ export default function DeskPage() {
                       className={`border-b border-slate-900 hover:bg-slate-900/40 cursor-pointer ${selectedStrike === r.strike ? 'bg-slate-900/50' : ''}`}
                       onClick={() => setSelectedStrike(Number(r.strike))}
                     >
-                      <td className="p-2 text-slate-200">{r.call?.bid_price ?? '—'} / {r.call?.ask_price ?? '—'}</td>
+                      <td className="p-2 text-slate-200">{r.call?.bid_price ?? '—'} / {r.call?.ask_price ?? '—'} · {r.call?.mark_iv ?? '—'} · {r.call?.open_interest ?? '—'}</td>
                       <td className="p-2 text-slate-100 font-semibold">{Number(r.strike).toFixed(0)}</td>
-                      <td className="p-2 text-slate-200">{r.put?.bid_price ?? '—'} / {r.put?.ask_price ?? '—'}</td>
+                      <td className="p-2 text-slate-200">{r.put?.bid_price ?? '—'} / {r.put?.ask_price ?? '—'} · {r.put?.mark_iv ?? '—'} · {r.put?.open_interest ?? '—'}</td>
                       <td className="p-2 text-slate-400">{Number(r.net_gex || 0).toFixed(2)}</td>
                     </tr>
                   ))}
