@@ -40,6 +40,7 @@ export default function CandlesChart({
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const linesRef = useRef<any[]>([]);
   const overlayRef = useRef<any[]>([]);
+  const fittedRef = useRef<boolean>(false);
 
   const data = useMemo(() => (ohlc ? toCandles(ohlc) : []), [ohlc]);
 
@@ -103,10 +104,36 @@ export default function CandlesChart({
   }, []);
 
   useEffect(() => {
+    const chart = chartRef.current;
     const series = seriesRef.current;
-    if (!series) return;
+    if (!chart || !series) return;
+
+    // Preserve the user's current viewport to avoid "jumping" candles on refresh.
+    // Only auto-fit once on the initial load.
+    let vr: any = null;
+    try {
+      // @ts-ignore
+      vr = chart.timeScale().getVisibleRange?.() || null;
+    } catch {
+      vr = null;
+    }
+
     series.setData(data);
-    chartRef.current?.timeScale().fitContent();
+
+    if (!fittedRef.current) {
+      fittedRef.current = true;
+      chart.timeScale().fitContent();
+      return;
+    }
+
+    if (vr) {
+      try {
+        // @ts-ignore
+        chart.timeScale().setVisibleRange?.(vr);
+      } catch {
+        // ignore
+      }
+    }
   }, [data]);
 
   useEffect(() => {
