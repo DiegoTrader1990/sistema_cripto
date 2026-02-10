@@ -37,6 +37,7 @@ export default function CandlesChart({
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const linesRef = useRef<any[]>([]);
+  const overlayRef = useRef<any[]>([]);
 
   const data = useMemo(() => (ohlc ? toCandles(ohlc) : []), [ohlc]);
 
@@ -107,10 +108,11 @@ export default function CandlesChart({
   }, [data]);
 
   useEffect(() => {
+    const chart = chartRef.current;
     const series = seriesRef.current;
-    if (!series) return;
+    if (!chart || !series) return;
 
-    // clear existing lines
+    // 1) Try native price lines
     for (const ln of linesRef.current) {
       try {
         series.removePriceLine(ln);
@@ -120,11 +122,12 @@ export default function CandlesChart({
     }
     linesRef.current = [];
 
+    let nativeOk = true;
     for (const lv of levels || []) {
       try {
         const ln = series.createPriceLine({
           price: Number(lv.price),
-          color: lv.color || 'rgba(99, 102, 241, 0.75)',
+          color: lv.color || 'rgba(99, 102, 241, 0.85)',
           lineWidth: 2,
           lineStyle: 0,
           axisLabelVisible: true,
@@ -132,10 +135,44 @@ export default function CandlesChart({
         });
         linesRef.current.push(ln);
       } catch {
+        nativeOk = false;
+        break;
+      }
+    }
+
+    // 2) Fallback: overlay line series (always visible)
+    for (const s of overlayRef.current) {
+      try {
+        chart.removeSeries(s);
+      } catch {
         // ignore
       }
     }
-  }, [levels]);
+    overlayRef.current = [];
+
+    if (!nativeOk && (levels || []).length && data.length >= 2) {
+      const t0 = data[0].time;
+      const t1 = data[data.length - 1].time;
+      for (const lv of levels || []) {
+        try {
+          // @ts-ignore
+          const ls = chart.addLineSeries({
+            color: lv.color || 'rgba(99, 102, 241, 0.85)',
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+          });
+          ls.setData([
+            { time: t0, value: Number(lv.price) },
+            { time: t1, value: Number(lv.price) },
+          ]);
+          overlayRef.current.push(ls);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }, [levels, data]);
 
   useEffect(() => {
     const chart = chartRef.current;
