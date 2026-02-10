@@ -253,8 +253,24 @@ export default function DeskPage() {
         <div className="col-span-12 lg:col-span-4 space-y-4">
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
             <div className="text-sm font-semibold">Operacional (Long Strangle)</div>
-            <div className="text-xs text-slate-500 mt-1">Clique no gráfico para selecionar o nível GEX mais próximo.</div>
+            <div className="text-xs text-slate-500 mt-1">Clique no gráfico para selecionar o nível GEX mais próximo. Se o clique não funcionar, use a lista de níveis abaixo.</div>
             {optErr ? <div className="mt-2 text-xs text-amber-400">GEX/Chain: {optErr}</div> : null}
+
+            <div className="mt-3">
+              <div className="text-xs text-slate-400">Níveis (walls):</div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {(gexLevels || []).slice(0, 10).map((lv) => (
+                  <button
+                    key={lv.strike}
+                    className="text-xs bg-slate-950/40 border border-slate-800 rounded px-2 py-1 hover:border-slate-600"
+                    onClick={() => setSelectedStrike(Number(lv.strike))}
+                  >
+                    {Number(lv.strike).toFixed(0)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="mt-3 text-sm">
               <div><span className="text-slate-400">Flip:</span> {flip ?? '—'}</div>
               <div><span className="text-slate-400">Strike selecionado:</span> {selectedStrike ?? '—'}</div>
