@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import GridLayout, { Layout, WidthProvider } from 'react-grid-layout';
-import '@/components/grid.module.css';
+import styles from '@/components/grid.module.css';
 
 const WGrid = WidthProvider(GridLayout);
 
@@ -80,7 +80,7 @@ export default function GridDeskLayout({ items }: { items: Item[] }) {
   const byKey = new Map(items.map((it) => [it.key, it]));
 
   return (
-    <div>
+    <div className={styles.root}>
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <div className="text-xs text-slate-500">
           {editMode
