@@ -38,11 +38,15 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-slate-900/60 border border-slate-800 rounded-xl p-6">
-        <h1 className="text-xl font-bold">Cripto Desk Web</h1>
-        <p className="text-sm text-slate-400 mt-1">Login</p>
+      <div className="w-full max-w-md bg-slate-900/60 border border-slate-800 rounded-2xl p-7 shadow-[0_0_0_1px_rgba(148,163,184,0.06)]">
+        <div className="text-xs tracking-widest text-slate-400">MY FRIEND</div>
+        <h1 className="text-2xl font-bold mt-1">My Friend - Cripto</h1>
+        <p className="text-sm text-slate-400 mt-1">Acesso ao terminal (demo)</p>
 
         <form className="mt-6 space-y-4" onSubmit={submit}>
+          <div className="text-xs text-slate-500">
+            Dica: se não tiver usuário/senha, peça para quem enviou o link.
+          </div>
           <div>
             <label className="text-sm text-slate-300">User</label>
             <input
