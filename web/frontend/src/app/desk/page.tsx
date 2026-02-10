@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import CandlesChart, { type Ohlc } from '@/components/CandlesChart';
 import PaperBoxCard from '@/components/PaperBoxCard';
 import GridDeskLayout from '@/components/GridDeskLayout';
+import StrategyPlannerCard from '@/components/StrategyPlannerCard';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
@@ -132,9 +133,8 @@ export default function DeskPage() {
         <a className="text-sm text-slate-400 hover:text-slate-200" href="/login">
           (trocar login)
         </a>
-        <a className="text-sm text-slate-400 hover:text-slate-200" href="/news">
-          News
-        </a>
+        <a className="text-sm text-slate-400 hover:text-slate-200" href="/news">News</a>
+        <a className="text-sm text-slate-400 hover:text-slate-200" href="/report">Relatório</a>
       </div>
 
       <div className="mt-4 flex gap-3 items-center flex-wrap">
@@ -215,7 +215,13 @@ export default function DeskPage() {
                             ...(selectedStrike
                               ? [{ price: Number(selectedStrike), label: 'SEL', color: 'rgba(59, 130, 246, 0.90)' }]
                               : []),
-                            ...gexLevels.map((x) => ({ price: Number(x.strike), label: 'WALL', color: 'rgba(168, 85, 247, 0.65)' })),
+                            ...gexLevels.map((x) => {
+                              const s = Number(x.strike);
+                              const sp = Number(last || 0);
+                              const d = sp ? ((s / sp - 1) * 100) : 0;
+                              const tag = sp ? `${d >= 0 ? '+' : ''}${d.toFixed(2)}%` : '';
+                              return { price: s, label: `WALL ${tag}`.trim(), color: 'rgba(168, 85, 247, 0.65)' };
+                            }),
                           ]
                         : []
                     }
@@ -360,8 +366,19 @@ export default function DeskPage() {
             },
             {
               key: 'news',
-              title: 'News',
-              node: <div className="text-xs text-slate-500">Abra a aba News para ler dentro do sistema.</div>,
+              title: 'Estratégia / Planner',
+              node: (
+                <StrategyPlannerCard
+                  selectedStrike={selectedStrike}
+                  selected={selectedStrike ? { strike: Number(selectedStrike), ...(selected || {}) } : null}
+                  expiry={expiry}
+                  expiries={expiries}
+                  setExpiry={setExpiry}
+                  spot={Number(last || 0)}
+                  targetPct={planTargetPct}
+                  setTargetPct={setPlanTargetPct}
+                />
+              ),
             },
           ]}
         />

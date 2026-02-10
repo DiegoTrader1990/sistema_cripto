@@ -525,6 +525,175 @@ def desk_chain(currency: str = "BTC", expiry: str = "", strike_range_pct: float 
     }
 
 
+# -------------------- Desk Quotes / Walls (Real-time helpers) --------------------
+_WALLS_CACHE: dict[str, Any] = {}
+
+
+def _cache_get(key: str) -> Any:
+    try:
+        it = _WALLS_CACHE.get(key)
+        if not it:
+            return None
+        if time.time() - float(it.get("ts") or 0.0) > float(it.get("ttl") or 0.0):
+            return None
+        return it.get("val")
+    except Exception:
+        return None
+
+
+def _cache_set(key: str, val: Any, ttl: float = 15.0):
+    try:
+        _WALLS_CACHE[key] = {"ts": time.time(), "ttl": float(ttl), "val": val}
+    except Exception:
+        pass
+
+
+@app.get("/api/desk/ticker")
+def desk_ticker(instrument: str, user: dict = Depends(get_user)):
+    """Proxy Deribit /public/ticker for a single instrument.
+
+    Used by SuperDOM + Planner to fetch real-time bid/ask/mark/greeks.
+    """
+    instrument = (instrument or "").strip()
+    if not instrument:
+        raise HTTPException(status_code=400, detail="instrument required")
+    client = DeribitPublicClient(timeout=8.0)
+    t, _ = client.get_ticker(instrument)
+    return {"ok": True, "instrument": instrument, "ticker": t, "ts": int(time.time() * 1000)}
+
+
+@app.get("/api/desk/walls")
+def desk_walls(currency: str = "BTC", mode: str = "expiry", expiry: str = "", strike_range_pct: float = 12.0, max_expiries: int = 0, user: dict = Depends(get_user)):
+    """Return ranked walls.
+
+    mode:
+      - 'expiry': walls for a single expiry (uses /api/desk/chain logic)
+      - 'all': aggregate walls across many expiries (cached)
+
+    NOTE: 'all' can be heavy; we cache results briefly.
+    """
+    currency = (currency or "BTC").upper().strip()
+    mode = (mode or "expiry").lower().strip()
+
+    # spot from perpetual
+    perp = f"{currency}-PERPETUAL"
+    spot = 0.0
+    try:
+        tkr, _ = DeribitPublicClient(timeout=8.0).get_ticker(perp)
+        spot = float((tkr.get("last_price") or tkr.get("index_price") or 0.0))
+    except Exception:
+        spot = 0.0
+
+    strike_range_pct = max(1.0, min(30.0, float(strike_range_pct)))
+
+    if mode != "all":
+        ch = desk_chain(currency=currency, expiry=expiry, strike_range_pct=strike_range_pct, user=user)
+        return {"ok": True, "currency": currency, "mode": "expiry", "expiry": ch.get("expiry"), "spot": ch.get("spot"), "flip": ch.get("flip"), "regime": ch.get("regime"), "walls": ch.get("walls")}
+
+    # aggregated across expiries (cached)
+    cache_key = f"walls:{currency}:all:{int(strike_range_pct)}:{int(max_expiries or 0)}"
+    cached = _cache_get(cache_key)
+    if cached:
+        return cached
+
+    inst = deribit_get("/public/get_instruments", {"currency": currency, "kind": "option", "expired": "false"}) or []
+    expiries = sorted({_expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0)) for x in inst if x.get("expiration_timestamp")})
+    expiries = [e for e in expiries if e]
+
+    # safety cap (can be overridden)
+    if max_expiries and int(max_expiries) > 0:
+        expiries = expiries[: max(1, min(60, int(max_expiries)))]
+    else:
+        expiries = expiries[:24]
+
+    # range filter by strike around spot
+    lo = hi = None
+    if spot > 0:
+        lo = spot * (1 - strike_range_pct / 100.0)
+        hi = spot * (1 + strike_range_pct / 100.0)
+
+    # build instrument list for selected expiries
+    inst_sel: list[dict] = []
+    for x in inst:
+        ex = _expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0))
+        if ex not in expiries:
+            continue
+        try:
+            strike = float(x.get("strike") or 0.0)
+            if lo is not None and (strike < float(lo) or strike > float(hi)):
+                continue
+        except Exception:
+            continue
+        inst_sel.append(x)
+
+    inst_sel = inst_sel[:1200]
+    names = [x.get("instrument_name") for x in inst_sel if x.get("instrument_name")]
+
+    client = DeribitPublicClient(timeout=8.0)
+
+    def _fetch_one(name: str) -> dict:
+        t, _ = client.get_ticker(name)
+        greeks = (t.get("greeks") or {})
+        return {
+            "instrument_name": name,
+            "underlying_price": float(t.get("underlying_price") or spot or 0.0),
+            "open_interest": float(t.get("open_interest") or 0.0),
+            "gamma": float(greeks.get("gamma") or 0.0),
+        }
+
+    tickers: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=18) as ex:
+        futs = [ex.submit(_fetch_one, n) for n in names]
+        for f in as_completed(futs):
+            try:
+                row = f.result()
+                tickers[row["instrument_name"]] = row
+            except Exception:
+                continue
+
+    raw_rows: list[dict] = []
+    for x in inst_sel:
+        name = x.get("instrument_name")
+        if not name:
+            continue
+        t = tickers.get(name) or {}
+        raw_rows.append(
+            {
+                "instrument_name": name,
+                "strike": float(x.get("strike") or 0.0),
+                "option_type": str(x.get("option_type") or ""),
+                "open_interest": float(t.get("open_interest") or 0.0),
+                "gamma": float(t.get("gamma") or 0.0),
+                "bid_price": 0.0,
+                "ask_price": 0.0,
+                "mark_iv": 0.0,
+                "underlying_price": float(t.get("underlying_price") or spot or 0.0),
+                "expiry": "ALL",
+            }
+        )
+
+    gex_rows = compute_gex_rows(raw_rows)
+    strike_net = aggregate_by_strike(gex_rows)
+    flip = gamma_flip(strike_net)
+    walls = top_walls(strike_net, n=24)
+
+    out = {
+        "ok": True,
+        "currency": currency,
+        "mode": "all",
+        "expiry": "ALL",
+        "spot": float(spot or 0.0),
+        "flip": flip,
+        "regime": regime_text(strike_net, flip=flip),
+        "walls": [{"strike": k, "gex": v} for (k, v) in walls],
+        "expiries_used": len(expiries),
+        "ts": int(time.time() * 1000),
+    }
+
+    _cache_set(cache_key, out, ttl=20.0)
+    return out
+
+
 # -------------------- Altcoins API --------------------
 ALTCOINS_DEFAULT = [
     "SOLUSDT",
