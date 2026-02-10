@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import CandlesChart, { type Ohlc } from '@/components/CandlesChart';
 import PaperBoxCard from '@/components/PaperBoxCard';
 import GridDeskLayout from '@/components/GridDeskLayout';
+import DeskLayoutControls from '@/components/DeskLayoutControls';
 import StrategyPlannerCard from '@/components/StrategyPlannerCard';
 import SpotPulseCard from '@/components/SpotPulseCard';
 
@@ -33,6 +34,7 @@ export default function DeskPage() {
   const [liveSec, setLiveSec] = useState<number>(8);
   const [ohlc, setOhlc] = useState<OhlcWithVol | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [bootLoading, setBootLoading] = useState<boolean>(true);
 
   // options/gex
   const [expiry, setExpiry] = useState<string>('');
@@ -53,6 +55,7 @@ export default function DeskPage() {
   async function refresh() {
     setErr(null);
     setOptErr(null);
+
     try {
       const data = await apiGet(
         `/api/desk/ohlc?instrument=${encodeURIComponent(instrument)}&tf=${encodeURIComponent(tf)}&candles=${candles}`
@@ -64,10 +67,11 @@ export default function DeskPage() {
         localStorage.removeItem('token');
         r.push('/login');
       }
+      setBootLoading(false);
       return;
     }
 
-    // options/gex (non-blocking)
+    // options/gex
     try {
       const ex = await apiGet(`/api/desk/expiries?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}`);
       const exs = (ex.expiries || []) as string[];
@@ -115,6 +119,8 @@ export default function DeskPage() {
       }
     } catch (e: any) {
       setOptErr(String(e?.message || e));
+    } finally {
+      setBootLoading(false);
     }
   }
 
@@ -166,21 +172,37 @@ export default function DeskPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-bold">My Friend Cripto</h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <a className="text-sm text-slate-400 hover:text-slate-200" href="/news">News</a>
-          <a className="text-sm text-slate-400 hover:text-slate-200" href="/report">Relatório</a>
-          <a className="text-sm text-slate-400 hover:text-slate-200" href="/help">Tutorial</a>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-xl font-bold">My Friend Cripto</h1>
+          <nav className="flex items-center gap-2">
+            <a className="text-sm text-slate-400 hover:text-slate-200" href="/news">News</a>
+            <a className="text-sm text-slate-400 hover:text-slate-200" href="/report">Relatório</a>
+            <a className="text-sm text-slate-400 hover:text-slate-200" href="/help">Tutorial</a>
+          </nav>
+        </div>
+        <div className="flex items-center gap-2">
+          <DeskLayoutControls />
           <a className="text-sm bg-slate-900 border border-slate-800 rounded px-3 py-1 hover:border-slate-600" href="/login">Trocar login</a>
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-slate-500">Controles do terminal ficam dentro do card do gráfico (overlay).</div>
-
       {err ? <div className="mt-4 text-sm text-red-400">{err}</div> : null}
 
+      {bootLoading ? (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 w-[min(520px,90vw)]">
+            <div className="text-lg font-bold">Aguarde My Friend…</div>
+            <div className="mt-2 text-sm text-slate-300">Carregando mercado, opções, GEX e walls em tempo real.</div>
+            <div className="mt-4 h-2 rounded bg-slate-800 overflow-hidden">
+              <div className="h-2 w-1/2 bg-blue-600 animate-pulse" />
+            </div>
+            <div className="mt-3 text-xs text-slate-500">Se demorar, pode ser o Render “acordando”.</div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-6">
-        <GridDeskLayout
+        <GridDeskLayout hideToolbar
           items={[
             {
               key: 'chart',

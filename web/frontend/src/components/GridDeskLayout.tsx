@@ -16,7 +16,7 @@ type Item = {
 const LS_KEY = 'desk.layout.v1';
 const LS_EDIT = 'desk.layout.edit.v1';
 
-export default function GridDeskLayout({ items }: { items: Item[] }) {
+export default function GridDeskLayout({ items, hideToolbar }: { items: Item[]; hideToolbar?: boolean }) {
   const defaultLayout: Layout[] = useMemo(
     () => [
       { i: 'chart', x: 0, y: 0, w: 7, h: 12 },
@@ -48,6 +48,16 @@ export default function GridDeskLayout({ items }: { items: Item[] }) {
     } catch {
       // ignore
     }
+
+    // Allow external controls (top bar) to toggle/reset without re-render coupling.
+    const onEvt = (e: any) => {
+      const action = e?.detail?.action;
+      if (action === 'toggle') toggleEdit();
+      if (action === 'reset') reset();
+    };
+    window.addEventListener('desk_layout', onEvt as any);
+    return () => window.removeEventListener('desk_layout', onEvt as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function onChange(l: Layout[]) {
@@ -94,28 +104,30 @@ export default function GridDeskLayout({ items }: { items: Item[] }) {
 
   return (
     <div className={styles.root}>
-      <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-        <div className="text-xs text-slate-500">
-          {editMode
-            ? 'Modo edição ON: arraste pelo topo dos cards para mover · arraste o canto inferior direito para redimensionar.'
-            : 'Layout travado. Ative o modo edição para mover/redimensionar os cards.'}
+      {!hideToolbar ? (
+        <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+          <div className="text-xs text-slate-500">
+            {editMode
+              ? 'Modo edição ON: arraste pelo topo dos cards para mover · arraste o canto inferior direito para redimensionar.'
+              : 'Layout travado. Ative o modo edição para mover/redimensionar os cards.'}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className={
+                editMode
+                  ? 'text-xs bg-amber-500/20 border border-amber-500/40 text-amber-200 rounded px-2 py-1 hover:border-amber-400'
+                  : 'text-xs bg-slate-950/40 border border-slate-800 text-slate-300 rounded px-2 py-1 hover:border-slate-600'
+              }
+              onClick={toggleEdit}
+            >
+              {editMode ? 'travar layout' : 'editar layout'}
+            </button>
+            <button className="text-xs text-slate-400 hover:text-slate-200" onClick={reset}>
+              reset
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            className={
-              editMode
-                ? 'text-xs bg-amber-500/20 border border-amber-500/40 text-amber-200 rounded px-2 py-1 hover:border-amber-400'
-                : 'text-xs bg-slate-950/40 border border-slate-800 text-slate-300 rounded px-2 py-1 hover:border-slate-600'
-            }
-            onClick={toggleEdit}
-          >
-            {editMode ? 'travar layout' : 'editar layout'}
-          </button>
-          <button className="text-xs text-slate-400 hover:text-slate-200" onClick={reset}>
-            reset
-          </button>
-        </div>
-      </div>
+      ) : null}
 
       <WGrid
         className="layout"
