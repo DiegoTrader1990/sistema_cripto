@@ -337,17 +337,48 @@ def test_ohlc(tf: str = "60", candles: int = 900, user: dict = Depends(get_user)
 
 
 # -------------------- Altcoins API --------------------
+ALTCOINS_DEFAULT = [
+    "SOLUSDT",
+    "XRPUSDT",
+    "BNBUSDT",
+    "ADAUSDT",
+    "DOGEUSDT",
+    "AVAXUSDT",
+    "LINKUSDT",
+    "DOTUSDT",
+    "MATICUSDT",
+    "LTCUSDT",
+    "TRXUSDT",
+    "ATOMUSDT",
+    "ARBUSDT",
+    "OPUSDT",
+    "APTUSDT",
+    "SUIUSDT",
+]
+
+
 @app.get("/api/alt/symbols")
 def alt_symbols(force: int = 0, limit: int = 5000, user: dict = Depends(get_user)):
-    syms = binance_usdt_symbols(force=bool(force))
-    return {"ok": True, "n": min(int(limit), len(syms)), "symbols": syms[: max(1, int(limit))]}
+    try:
+        syms = binance_usdt_symbols(force=bool(force))
+        if not syms:
+            syms = ALTCOINS_DEFAULT
+        limit = max(1, min(10000, int(limit)))
+        return {"ok": True, "n": min(limit, len(syms)), "symbols": syms[:limit]}
+    except Exception as e:
+        # Fallback to a safe default list
+        return {"ok": True, "n": len(ALTCOINS_DEFAULT), "symbols": ALTCOINS_DEFAULT, "warning": f"binance_symbols_failed: {e}"}
 
 
 @app.get("/api/alt/ohlc")
 def alt_ohlc(symbol: str = "SOLUSDT", tf: str = "15", candles: int = 300, user: dict = Depends(get_user)):
-    candles = max(120, min(1500, int(candles)))
-    ohlc = binance_klines(symbol=symbol.upper(), tf=tf, limit=candles)
-    return {"ok": True, "symbol": symbol.upper(), "tf": tf, "candles": candles, "ohlc": ohlc}
+    try:
+        candles = max(120, min(1500, int(candles)))
+        sym = (symbol or "SOLUSDT").upper().strip()
+        ohlc = binance_klines(symbol=sym, tf=tf, limit=candles)
+        return {"ok": True, "symbol": sym, "tf": tf, "candles": candles, "ohlc": ohlc}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"alt_ohlc_failed: {e}")
 
 
 # -------------------- News API --------------------
@@ -425,3 +456,9 @@ def api_news_open(
 @app.exception_handler(HTTPException)
 async def http_exc(_, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code, content={"ok": False, "error": exc.detail})
+
+
+@app.exception_handler(Exception)
+async def any_exc(_, exc: Exception):
+    # Ensure frontend always receives JSON (avoid "Unexpected token <" on 500 HTML)
+    return JSONResponse(status_code=500, content={"ok": False, "error": f"server_error: {exc}"})
