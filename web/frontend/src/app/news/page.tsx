@@ -85,7 +85,7 @@ export default function NewsPage() {
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold">News</h1>
-        <a className="text-sm text-slate-400 hover:text-slate-200" href="/desk">Desk</a>
+        <a className="text-sm bg-slate-900 border border-slate-800 rounded px-3 py-1 hover:border-slate-600" href="/desk">← Desk</a>
         {/* Altcoins hidden */}
       </div>
 

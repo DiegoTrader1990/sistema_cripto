@@ -52,6 +52,9 @@ export default function GridDeskLayout({ items }: { items: Item[] }) {
 
   function onChange(l: Layout[]) {
     setLayout(l);
+    // IMPORTANT: react-grid-layout may emit layout changes on responsive width
+    // even when user isn't editing. Persist ONLY while in edit mode.
+    if (!editMode) return;
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(l));
     } catch {
@@ -75,6 +78,15 @@ export default function GridDeskLayout({ items }: { items: Item[] }) {
       localStorage.setItem(LS_EDIT, next ? '1' : '0');
     } catch {
       // ignore
+    }
+
+    // When locking (edit -> locked), persist current layout explicitly.
+    if (!next) {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(layout));
+      } catch {
+        // ignore
+      }
     }
   }
 

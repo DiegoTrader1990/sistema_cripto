@@ -182,12 +182,14 @@ export default function StrategyPlannerCard({
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
               <div className="text-xs font-semibold">CALL</div>
+              <div className="mt-1 text-[10px] text-slate-500 break-all">{callName}</div>
               <div className="mt-1 text-[11px] text-slate-400">Bid/Ask: {premiums.cBid?.toFixed?.(4) ?? '—'} / {premiums.cAsk?.toFixed?.(4) ?? '—'}</div>
               <div className="text-[11px] text-slate-400">Mark/Mid: {premiums.cMark?.toFixed?.(4) ?? '—'} / {premiums.cMid?.toFixed?.(4) ?? '—'}</div>
               <div className="mt-1 text-[11px] text-slate-300">Premium USD: <span className="font-semibold">${premiums.callUsd.toFixed(2)}</span></div>
             </div>
             <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
               <div className="text-xs font-semibold">PUT</div>
+              <div className="mt-1 text-[10px] text-slate-500 break-all">{putName}</div>
               <div className="mt-1 text-[11px] text-slate-400">Bid/Ask: {premiums.pBid?.toFixed?.(4) ?? '—'} / {premiums.pAsk?.toFixed?.(4) ?? '—'}</div>
               <div className="text-[11px] text-slate-400">Mark/Mid: {premiums.pMark?.toFixed?.(4) ?? '—'} / {premiums.pMid?.toFixed?.(4) ?? '—'}</div>
               <div className="mt-1 text-[11px] text-slate-300">Premium USD: <span className="font-semibold">${premiums.putUsd.toFixed(2)}</span></div>

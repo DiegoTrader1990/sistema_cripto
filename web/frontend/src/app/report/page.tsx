@@ -94,7 +94,7 @@ export default function ReportPage() {
           <div className="text-xs text-slate-500">Dados locais (localStorage) — por enquanto.</div>
         </div>
         <div className="flex items-center gap-2">
-          <a className="text-sm text-slate-300 hover:text-white" href="/desk">Desk</a>
+          <a className="text-sm bg-slate-900 border border-slate-800 rounded px-3 py-1 hover:border-slate-600" href="/desk">← Desk</a>
           <button className="text-sm bg-slate-900 border border-slate-800 rounded px-3 py-1 hover:border-slate-600" onClick={exportCsv}>
             Export CSV
           </button>
