@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.deribit_api import DeribitPublicClient  # noqa
+from src.gex import compute_gex_rows, aggregate_by_strike, gamma_flip, top_walls, regime_text  # noqa
 from src.testdata import gen_ohlc  # noqa
 
 
@@ -191,6 +192,23 @@ AUTH_PASS = os.environ.get("CRYPT_PASS", "Cripto")
 AUTH_SECRET = os.environ.get("CRYPT_SECRET", "change-me")
 TOKEN_TTL_SEC = int(os.environ.get("CRYPT_TOKEN_TTL", "86400"))
 
+DERIBIT_BASE = "https://www.deribit.com/api/v2"
+
+def deribit_get(path: str, params: dict):
+    r = requests.get(DERIBIT_BASE + path, params=params, timeout=10, headers={"User-Agent": "cripto-desk-web/0.1"})
+    r.raise_for_status()
+    data = r.json() or {}
+    if data.get("error"):
+        raise RuntimeError(str(data.get("error")))
+    return data.get("result")
+
+def _expiry_str_from_ts_ms(ts_ms: int) -> str:
+    # Deribit instruments give expiration_timestamp in ms
+    try:
+        return time.strftime("%Y-%m-%d", time.gmtime(int(ts_ms) / 1000))
+    except Exception:
+        return ""
+
 
 def _b64u(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).decode("utf-8").rstrip("=")
@@ -334,6 +352,89 @@ def test_ohlc(tf: str = "60", candles: int = 900, user: dict = Depends(get_user)
     step = 60 if tf in ("1", "5", "15") else (60 * 60 if tf in ("60",) else (4 * 60 * 60 if tf in ("240",) else 24 * 60 * 60))
     ohlc = gen_ohlc(n=candles, start_price=70000.0, step_sec=step)
     return {"ok": True, "tf": tf, "candles": candles, "ohlc": ohlc}
+
+
+# -------------------- Desk Options (Deribit) --------------------
+@app.get("/api/desk/expiries")
+def desk_expiries(currency: str = "BTC", user: dict = Depends(get_user)):
+    currency = (currency or "BTC").upper().strip()
+    inst = deribit_get("/public/get_instruments", {"currency": currency, "kind": "option", "expired": "false"}) or []
+    expiries = sorted({ _expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0)) for x in inst if x.get("expiration_timestamp") })
+    expiries = [e for e in expiries if e]
+    return {"ok": True, "currency": currency, "expiries": expiries}
+
+
+@app.get("/api/desk/chain")
+def desk_chain(currency: str = "BTC", expiry: str = "", user: dict = Depends(get_user)):
+    """Return option chain rows + GEX aggregates for a given expiry."""
+    currency = (currency or "BTC").upper().strip()
+    inst = deribit_get("/public/get_instruments", {"currency": currency, "kind": "option", "expired": "false"}) or []
+
+    # choose default expiry: nearest
+    if not expiry:
+        expiries = sorted({ _expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0)) for x in inst if x.get("expiration_timestamp") })
+        expiries = [e for e in expiries if e]
+        expiry = expiries[0] if expiries else ""
+
+    inst_exp = [x for x in inst if _expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0)) == expiry]
+
+    summaries = deribit_get("/public/get_book_summary_by_currency", {"currency": currency, "kind": "option"}) or []
+    by_name = { (s.get("instrument_name") or ""): s for s in summaries }
+
+    raw_rows = []
+    chain = []
+    for x in inst_exp:
+        name = x.get("instrument_name")
+        if not name:
+            continue
+        s = by_name.get(name) or {}
+        greeks = (s.get("greeks") or {})
+        bid = float(s.get("bid_price") or 0.0)
+        ask = float(s.get("ask_price") or 0.0)
+        oi = float(s.get("open_interest") or 0.0)
+        spot = float(s.get("underlying_price") or 0.0)
+        gamma = float(greeks.get("gamma") or 0.0)
+        iv = float(s.get("mark_iv") or 0.0)
+        strike = float(x.get("strike") or 0.0)
+        opt_type = str(x.get("option_type") or "")
+
+        row = {
+            "instrument_name": name,
+            "strike": strike,
+            "option_type": opt_type,
+            "open_interest": oi,
+            "gamma": gamma,
+            "bid_price": bid,
+            "ask_price": ask,
+            "mark_iv": iv,
+            "underlying_price": spot,
+            "expiry": expiry,
+        }
+        raw_rows.append(row)
+        chain.append({
+            **row,
+            "delta": float(greeks.get("delta") or 0.0),
+            "vega": float(greeks.get("vega") or 0.0),
+            "theta": float(greeks.get("theta") or 0.0),
+            "mark_price": float(s.get("mark_price") or 0.0),
+        })
+
+    gex_rows = compute_gex_rows(raw_rows)
+    strike_net = aggregate_by_strike(gex_rows)
+    flip = gamma_flip(strike_net)
+    walls = top_walls(strike_net, n=18)
+
+    return {
+        "ok": True,
+        "currency": currency,
+        "expiry": expiry,
+        "spot": float(chain[0].get("underlying_price") or 0.0) if chain else 0.0,
+        "regime": regime_text(strike_net, flip=flip),
+        "flip": flip,
+        "walls": [{"strike": k, "gex": v} for (k, v) in walls],
+        "strike_net": [{"strike": k, "gex": v} for (k, v) in strike_net.items()],
+        "chain": chain,
+    }
 
 
 # -------------------- Altcoins API --------------------

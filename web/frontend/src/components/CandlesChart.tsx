@@ -22,10 +22,21 @@ function toCandles(ohlc: Ohlc) {
   return out;
 }
 
-export default function CandlesChart({ ohlc }: { ohlc: Ohlc | null }) {
+export type GexLevel = { price: number; label?: string; color?: string };
+
+export default function CandlesChart({
+  ohlc,
+  levels,
+  onPickPrice,
+}: {
+  ohlc: Ohlc | null;
+  levels?: GexLevel[];
+  onPickPrice?: (price: number) => void;
+}) {
   const ref = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const linesRef = useRef<any[]>([]);
 
   const data = useMemo(() => (ohlc ? toCandles(ohlc) : []), [ohlc]);
 
@@ -94,6 +105,56 @@ export default function CandlesChart({ ohlc }: { ohlc: Ohlc | null }) {
     series.setData(data);
     chartRef.current?.timeScale().fitContent();
   }, [data]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    if (!chart || !series) return;
+
+    // clear existing lines
+    try {
+      for (const ln of linesRef.current) {
+        try {
+          series.removePriceLine(ln);
+        } catch {
+          // ignore
+        }
+      }
+    } catch {
+      // ignore
+    }
+    linesRef.current = [];
+
+    for (const lv of levels || []) {
+      const ln = series.createPriceLine({
+        price: lv.price,
+        color: lv.color || 'rgba(99, 102, 241, 0.55)',
+        lineWidth: 1,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: lv.label || '',
+      });
+      linesRef.current.push(ln);
+    }
+  }, [levels]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !onPickPrice) return;
+    const handler = (param: any) => {
+      const p = param?.seriesData?.values?.().next?.().value;
+      // param.price exists for some cases; fallback to close
+      const price = Number(param?.price || p?.close || 0);
+      if (price > 0) onPickPrice(price);
+    };
+    // lightweight-charts v4
+    // @ts-ignore
+    chart.subscribeClick(handler);
+    return () => {
+      // @ts-ignore
+      chart.unsubscribeClick(handler);
+    };
+  }, [onPickPrice]);
 
   return <div ref={ref} className="w-full h-[440px]" />;
 }

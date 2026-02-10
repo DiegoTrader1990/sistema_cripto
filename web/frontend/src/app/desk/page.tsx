@@ -28,11 +28,33 @@ export default function DeskPage() {
   const [ohlc, setOhlc] = useState<OhlcWithVol | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  // options/gex
+  const [expiry, setExpiry] = useState<string>('');
+  const [expiries, setExpiries] = useState<string[]>([]);
+  const [gexOn, setGexOn] = useState<boolean>(false);
+  const [gexLevels, setGexLevels] = useState<{ strike: number; gex: number }[]>([]);
+  const [flip, setFlip] = useState<number | null>(null);
+  const [selectedStrike, setSelectedStrike] = useState<number | null>(null);
+  const [planTargetPct, setPlanTargetPct] = useState<number>(1.5);
+
   async function refresh() {
     setErr(null);
     try {
       const data = await apiGet(`/api/desk/ohlc?instrument=${encodeURIComponent(instrument)}&tf=${encodeURIComponent(tf)}&candles=${candles}`);
       setOhlc(data.ohlc);
+
+      // options/gex (BTC only for now)
+      const ex = await apiGet(`/api/desk/expiries?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}`);
+      const exs = (ex.expiries || []) as string[];
+      setExpiries(exs);
+      const chosen = expiry || exs[0] || '';
+      setExpiry(chosen);
+      if (chosen) {
+        const cg = await apiGet(`/api/desk/chain?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}&expiry=${encodeURIComponent(chosen)}`);
+        setFlip(cg.flip ?? null);
+        // take top walls as levels
+        setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
+      }
     } catch (e: any) {
       setErr(String(e?.message || e));
       if (String(e?.message || '').includes('unauthorized')) {
@@ -90,6 +112,16 @@ export default function DeskPage() {
 
         <button className="bg-blue-600 hover:bg-blue-500 rounded px-3 py-1" onClick={refresh}>Atualizar</button>
 
+        <label className="text-sm text-slate-300">GEX</label>
+        <input type="checkbox" checked={gexOn} onChange={(e) => setGexOn(e.target.checked)} />
+
+        <label className="text-sm text-slate-300">Expiry</label>
+        <select className="bg-slate-900 border border-slate-800 rounded px-2 py-1" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
+          {expiries.map((e) => (
+            <option key={e} value={e}>{e}</option>
+          ))}
+        </select>
+
         <div className="text-sm text-slate-400">Last: {last ?? '—'}</div>
       </div>
 
@@ -99,14 +131,49 @@ export default function DeskPage() {
         <div className="col-span-12 lg:col-span-8 bg-slate-900/40 border border-slate-800 rounded-xl p-4">
           <div className="text-sm text-slate-300 font-semibold">Chart</div>
           <div className="mt-3">
-            <CandlesChart ohlc={ohlc} />
+            <CandlesChart
+              ohlc={ohlc}
+              levels={gexOn ? gexLevels.map((x) => ({ price: x.strike, label: 'GEX', color: 'rgba(168, 85, 247, 0.6)' })) : []}
+              onPickPrice={(p) => {
+                if (!gexLevels.length) return;
+                let best = gexLevels[0];
+                let bestD = Math.abs(p - best.strike);
+                for (const lv of gexLevels) {
+                  const d = Math.abs(p - lv.strike);
+                  if (d < bestD) {
+                    best = lv;
+                    bestD = d;
+                  }
+                }
+                setSelectedStrike(best.strike);
+              }}
+            />
           </div>
         </div>
 
         <div className="col-span-12 lg:col-span-4 space-y-4">
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
-            <div className="text-sm font-semibold">Cards</div>
-            <div className="text-xs text-slate-500 mt-1">Vamos reorganizar e replicar os cards do desktop (Context / Level / Strategy / Planner) aqui.</div>
+            <div className="text-sm font-semibold">Operacional (Long Strangle)</div>
+            <div className="text-xs text-slate-500 mt-1">Clique no gráfico para selecionar o nível GEX mais próximo.</div>
+            <div className="mt-3 text-sm">
+              <div><span className="text-slate-400">Flip:</span> {flip ?? '—'}</div>
+              <div><span className="text-slate-400">Strike selecionado:</span> {selectedStrike ?? '—'}</div>
+            </div>
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <label className="text-xs text-slate-400">Alvo (%)</label>
+              <input className="bg-slate-900 border border-slate-800 rounded px-2 py-1 w-24" type="number" step="0.1" value={planTargetPct} onChange={(e)=>setPlanTargetPct(parseFloat(e.target.value||'1.5'))} />
+            </div>
+            <div className="mt-3 text-xs text-slate-300 bg-slate-950/40 border border-slate-800 rounded p-3">
+              {selectedStrike ? (
+                <>
+                  <div className="font-semibold">Plano:</div>
+                  <div>Comprar CALL + PUT no strike {selectedStrike} (expiry {expiry}).</div>
+                  <div>Objetivo: capturar ~±{planTargetPct}% de variação do spot.</div>
+                </>
+              ) : (
+                <div>Selecione um nível (ligue GEX e clique no gráfico).</div>
+              )}
+            </div>
           </div>
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
             <div className="text-sm font-semibold">News</div>
