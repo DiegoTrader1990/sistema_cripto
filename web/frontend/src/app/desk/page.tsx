@@ -57,6 +57,8 @@ export default function DeskPage() {
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold">Desk</h1>
         <a className="text-sm text-slate-400 hover:text-slate-200" href="/login">(trocar login)</a>
+        <a className="text-sm text-slate-400 hover:text-slate-200" href="/altcoins">Altcoins</a>
+        <a className="text-sm text-slate-400 hover:text-slate-200" href="/news">News</a>
       </div>
 
       <div className="mt-4 flex gap-3 items-center flex-wrap">

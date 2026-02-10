@@ -27,6 +27,161 @@ from src.testdata import gen_ohlc  # noqa
 
 APP_NAME = "Cripto Desk Web"
 
+# -------------------- News (RSS) --------------------
+NEWS_FEEDS = [
+    ("Crypto", "Google: crypto", "https://news.google.com/rss/search?q=crypto+when:1d&hl=en-US&gl=US&ceid=US:en"),
+    ("Crypto", "Google: bitcoin", "https://news.google.com/rss/search?q=bitcoin+when:1d&hl=en-US&gl=US&ceid=US:en"),
+    ("Macro", "Google: fed", "https://news.google.com/rss/search?q=federal+reserve+when:1d&hl=en-US&gl=US&ceid=US:en"),
+    ("Macro", "Google: CPI", "https://news.google.com/rss/search?q=CPI+inflation+when:7d&hl=en-US&gl=US&ceid=US:en"),
+    ("Macro", "Google: risk off", "https://news.google.com/rss/search?q=risk-off+stocks+when:1d&hl=en-US&gl=US&ceid=US:en"),
+]
+
+ASSET_KEYWORDS = {
+    "BTC": ["bitcoin", "btc", "etf", "miners"],
+    "ETH": ["ethereum", "eth", "gas", "layer 2", "l2"],
+    "SOL": ["solana", "sol"],
+    "XRP": ["xrp", "ripple"],
+    "BNB": ["binance", "bnb"],
+    "DOGE": ["dogecoin", "doge"],
+    "ADA": ["cardano", "ada"],
+    "AVAX": ["avalanche", "avax"],
+    "LINK": ["chainlink", "link"],
+    "DOT": ["polkadot", "dot"],
+    "MATIC": ["polygon", "matic", "pol"],
+    "LTC": ["litecoin", "ltc"],
+    "ARB": ["arbitrum", "arb"],
+    "OP": ["optimism", "op"],
+    "SUI": ["sui"],
+    "APT": ["aptos", "apt"],
+}
+
+
+def _between(s: str, a: str, b: str) -> str:
+    try:
+        i = s.find(a)
+        if i < 0:
+            return ""
+        j = s.find(b, i + len(a))
+        if j < 0:
+            return ""
+        return s[i + len(a) : j]
+    except Exception:
+        return ""
+
+
+def _tag_assets(title: str) -> tuple[str, int]:
+    t = (title or "").lower()
+    hits: list[str] = []
+    score = 0
+    for sym, kws in ASSET_KEYWORDS.items():
+        for k in kws:
+            if k in t:
+                hits.append(sym)
+                score += 10
+                break
+    macro = [
+        "federal reserve",
+        "fed",
+        "cpi",
+        "inflation",
+        "rates",
+        "treasury",
+        "dollar",
+        "risk off",
+        "risk-on",
+        "geopolit",
+    ]
+    for m in macro:
+        if m in t:
+            score += 6
+            break
+    if not hits:
+        hits = ["BTC", "ETH"]
+    return ",".join(sorted(set(hits))), int(score)
+
+
+def fetch_rss_items(url: str, timeout: float = 8.0) -> list[dict]:
+    """Best-effort RSS parse without extra deps."""
+    try:
+        r = requests.get(url, timeout=timeout, headers={"User-Agent": "cripto-desk-web/0.1"})
+        r.raise_for_status()
+        xml = r.text
+        items: list[dict] = []
+        for chunk in xml.split("<item>")[1:]:
+            title = _between(chunk, "<title>", "</title>").strip()
+            link = _between(chunk, "<link>", "</link>").strip()
+            src = _between(chunk, "<source>", "</source>").strip() or "RSS"
+            assets, score = _tag_assets(title)
+            items.append({"ts": time.time(), "source": src, "title": title, "link": link, "assets": assets, "score": score})
+        return items[:60]
+    except Exception:
+        return []
+
+
+# -------------------- Altcoins (Binance spot) --------------------
+BINANCE_BASE = "https://api.binance.com"
+BINANCE_TF = {"1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", "1D": "1d"}
+_BINANCE_SYMBOLS_CACHE: dict[str, Any] = {"ts": 0.0, "symbols": []}
+
+
+def binance_usdt_symbols(force: bool = False) -> list[str]:
+    try:
+        if (not force) and _BINANCE_SYMBOLS_CACHE.get("symbols") and (time.time() - float(_BINANCE_SYMBOLS_CACHE.get("ts") or 0.0)) < 6 * 3600:
+            return list(_BINANCE_SYMBOLS_CACHE["symbols"])
+    except Exception:
+        pass
+
+    url = BINANCE_BASE + "/api/v3/exchangeInfo"
+    r = requests.get(url, timeout=12)
+    r.raise_for_status()
+    data = r.json() or {}
+    out: list[str] = []
+    for s in (data.get("symbols") or []):
+        try:
+            if (s.get("status") != "TRADING"):
+                continue
+            if (s.get("quoteAsset") or "").upper() != "USDT":
+                continue
+            sym = (s.get("symbol") or "").upper().strip()
+            if not sym or not sym.endswith("USDT"):
+                continue
+            bad = ("UPUSDT", "DOWNUSDT", "BULLUSDT", "BEARUSDT")
+            if any(sym.endswith(x) for x in bad):
+                continue
+            out.append(sym)
+        except Exception:
+            continue
+
+    out = sorted(set(out))
+    _BINANCE_SYMBOLS_CACHE["symbols"] = out
+    _BINANCE_SYMBOLS_CACHE["ts"] = time.time()
+    return out
+
+
+def binance_klines(symbol: str, tf: str, limit: int = 300) -> dict:
+    interval = BINANCE_TF.get(tf, "1m")
+    url = BINANCE_BASE + "/api/v3/klines"
+    r = requests.get(url, params={"symbol": symbol, "interval": interval, "limit": limit}, timeout=10)
+    r.raise_for_status()
+
+    t: list[float] = []
+    o: list[float] = []
+    h: list[float] = []
+    l: list[float] = []
+    c: list[float] = []
+    v: list[float] = []
+
+    for k in (r.json() or []):
+        ts = float(int(k[0]) // 1000)
+        t.append(ts)
+        o.append(float(k[1]))
+        h.append(float(k[2]))
+        l.append(float(k[3]))
+        c.append(float(k[4]))
+        v.append(float(k[5]))
+
+    return {"t": t, "o": o, "h": h, "l": l, "c": c, "v": v}
+
 # -------------------- Simple auth --------------------
 # NOTE: Diego asked for Myfriend/Cripto. We keep them configurable via env.
 AUTH_USER = os.environ.get("CRYPT_USER", "Myfriend")
@@ -177,6 +332,44 @@ def test_ohlc(tf: str = "60", candles: int = 900, user: dict = Depends(get_user)
     step = 60 if tf in ("1", "5", "15") else (60 * 60 if tf in ("60",) else (4 * 60 * 60 if tf in ("240",) else 24 * 60 * 60))
     ohlc = gen_ohlc(n=candles, start_price=70000.0, step_sec=step)
     return {"ok": True, "tf": tf, "candles": candles, "ohlc": ohlc}
+
+
+# -------------------- Altcoins API --------------------
+@app.get("/api/alt/symbols")
+def alt_symbols(force: int = 0, limit: int = 5000, user: dict = Depends(get_user)):
+    syms = binance_usdt_symbols(force=bool(force))
+    return {"ok": True, "n": min(int(limit), len(syms)), "symbols": syms[: max(1, int(limit))]}
+
+
+@app.get("/api/alt/ohlc")
+def alt_ohlc(symbol: str = "SOLUSDT", tf: str = "15", candles: int = 300, user: dict = Depends(get_user)):
+    candles = max(120, min(1500, int(candles)))
+    ohlc = binance_klines(symbol=symbol.upper(), tf=tf, limit=candles)
+    return {"ok": True, "symbol": symbol.upper(), "tf": tf, "candles": candles, "ohlc": ohlc}
+
+
+# -------------------- News API --------------------
+@app.get("/api/news")
+def api_news(cat: str = "ALL", q: str = "", limit: int = 60, user: dict = Depends(get_user)):
+    cat = (cat or "ALL").strip()
+    ql = (q or "").strip().lower()
+    items: list[dict] = []
+    for c, name, url in NEWS_FEEDS:
+        if cat != "ALL" and c != cat:
+            continue
+        for it in fetch_rss_items(url):
+            it2 = dict(it)
+            it2["cat"] = c
+            it2["feed"] = name
+            items.append(it2)
+
+    # simple filter
+    if ql:
+        items = [it for it in items if ql in (it.get("title") or "").lower()]
+
+    items.sort(key=lambda x: (int(x.get("score") or 0), float(x.get("ts") or 0.0)), reverse=True)
+    limit = max(1, min(200, int(limit)))
+    return {"ok": True, "n": min(limit, len(items)), "items": items[:limit]}
 
 
 @app.exception_handler(HTTPException)
