@@ -11,7 +11,8 @@
   "dependencies": {
     "next": "^15.2.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "lightweight-charts": "^5.0.8"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

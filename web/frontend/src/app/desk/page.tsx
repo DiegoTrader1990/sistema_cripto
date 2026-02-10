@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
-type Ohlc = { t: number[]; o: number[]; h: number[]; l: number[]; c: number[]; v: number[] };
+import CandlesChart, { type Ohlc } from '@/components/CandlesChart';
+
+type OhlcWithVol = Ohlc & { v?: number[] };
 
 async function apiGet(path: string) {
   const tok = localStorage.getItem('token') || '';
@@ -23,7 +25,7 @@ export default function DeskPage() {
   const [instrument, setInstrument] = useState('BTC-PERPETUAL');
   const [tf, setTf] = useState('60');
   const [candles, setCandles] = useState(900);
-  const [ohlc, setOhlc] = useState<Ohlc | null>(null);
+  const [ohlc, setOhlc] = useState<OhlcWithVol | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   async function refresh() {
@@ -93,11 +95,10 @@ export default function DeskPage() {
 
       <div className="mt-6 grid grid-cols-12 gap-4">
         <div className="col-span-12 lg:col-span-8 bg-slate-900/40 border border-slate-800 rounded-xl p-4">
-          <div className="text-sm text-slate-300 font-semibold">Chart (placeholder)</div>
-          <div className="text-xs text-slate-500 mt-1">Próximo passo: colocar TradingView Lightweight Charts com eixo de preço à direita + candles + crosshair.</div>
-          <pre className="mt-3 text-xs overflow-auto max-h-[420px] bg-slate-950/60 border border-slate-800 rounded p-3">
-{JSON.stringify({ n: ohlc?.t?.length || 0, t0: ohlc?.t?.[0], t1: ohlc?.t?.[ohlc?.t?.length - 1], last }, null, 2)}
-          </pre>
+          <div className="text-sm text-slate-300 font-semibold">Chart</div>
+          <div className="mt-3">
+            <CandlesChart ohlc={ohlc} />
+          </div>
         </div>
 
         <div className="col-span-12 lg:col-span-4 space-y-4">
