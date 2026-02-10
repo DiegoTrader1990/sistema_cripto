@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import GridLayout, { Layout, WidthProvider } from 'react-grid-layout';
+import '@/components/grid.module.css';
 
 const WGrid = WidthProvider(GridLayout);
 

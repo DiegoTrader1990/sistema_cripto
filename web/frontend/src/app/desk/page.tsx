@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import CandlesChart, { type Ohlc } from '@/components/CandlesChart';
 import PaperBoxCard from '@/components/PaperBoxCard';
 import GridDeskLayout from '@/components/GridDeskLayout';
-import './grid.css';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
