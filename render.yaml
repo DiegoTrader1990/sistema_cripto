@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: sistema-cripto-backend
+    env: python
+    plan: free
+    rootDir: web/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: CRYPT_USER
+        sync: false
+      - key: CRYPT_PASS
+        sync: false
+      - key: CRYPT_SECRET
+        generateValue: true
+      - key: CRYPT_TOKEN_TTL
+        value: "3600"
+
+  - type: web
+    name: sistema-cripto-frontend
+    env: node
+    plan: free
+    rootDir: web/frontend
+    buildCommand: npm ci --no-audit --no-fund && npm run build
+    startCommand: npm run start -- -p $PORT
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE
+        sync: false
