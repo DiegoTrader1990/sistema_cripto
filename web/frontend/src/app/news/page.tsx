@@ -86,7 +86,7 @@ export default function NewsPage() {
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold">News</h1>
         <a className="text-sm text-slate-400 hover:text-slate-200" href="/desk">Desk</a>
-        <a className="text-sm text-slate-400 hover:text-slate-200" href="/altcoins">Altcoins</a>
+        {/* Altcoins hidden */}
       </div>
 
       <div className="mt-4 flex gap-3 items-center flex-wrap">
