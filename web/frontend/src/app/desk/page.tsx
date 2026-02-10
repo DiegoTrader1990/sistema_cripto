@@ -171,7 +171,14 @@ export default function DeskPage() {
   }, [gexLevels]);
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
+    <main className="min-h-screen text-slate-100 p-6 relative overflow-hidden bg-slate-950">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-40 -left-40 w-[680px] h-[680px] rounded-full bg-indigo-500/10 blur-3xl" />
+        <div className="absolute -bottom-48 -right-48 w-[720px] h-[720px] rounded-full bg-fuchsia-500/10 blur-3xl" />
+        <div className="absolute inset-0 opacity-[0.12] bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.12),transparent_40%),radial-gradient(circle_at_80%_30%,rgba(168,85,247,0.10),transparent_45%),radial-gradient(circle_at_50%_85%,rgba(34,197,94,0.06),transparent_50%)]" />
+      </div>
+      <div className="relative">
+
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-xl font-bold">My Friend Cripto</h1>
@@ -504,6 +511,7 @@ export default function DeskPage() {
             },
           ]}
         />
+      </div>
       </div>
     </main>
   );

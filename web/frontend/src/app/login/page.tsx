@@ -37,16 +37,22 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-slate-900/60 border border-slate-800 rounded-2xl p-7 shadow-[0_0_0_1px_rgba(148,163,184,0.06)]">
-        <div className="text-xs tracking-widest text-slate-400">MY FRIEND</div>
-        <h1 className="text-2xl font-bold mt-1">My Friend - Cripto</h1>
-        <p className="text-sm text-slate-400 mt-1">Acesso ao terminal (demo)</p>
+    <main className="min-h-screen text-slate-100 flex items-center justify-center p-6 relative overflow-hidden bg-slate-950">
+      {/* premium crypto background */}
+      <div className="absolute inset-0">
+        <div className="absolute -top-32 -left-32 w-[520px] h-[520px] rounded-full bg-indigo-500/20 blur-3xl" />
+        <div className="absolute -bottom-40 -right-32 w-[620px] h-[620px] rounded-full bg-fuchsia-500/15 blur-3xl" />
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[720px] h-[320px] rounded-full bg-cyan-500/10 blur-3xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(59,130,246,0.10),transparent_40%),radial-gradient(circle_at_80%_20%,rgba(168,85,247,0.10),transparent_40%),radial-gradient(circle_at_50%_90%,rgba(34,197,94,0.08),transparent_45%)]" />
+        <div className="absolute inset-0 opacity-[0.18] bg-[linear-gradient(to_right,rgba(148,163,184,0.25)_1px,transparent_1px),linear-gradient(to_bottom,rgba(148,163,184,0.25)_1px,transparent_1px)] bg-[size:64px_64px]" />
+      </div>
+
+      <div className="relative w-full max-w-md">
+        <div className="w-full bg-slate-900/55 border border-slate-800 rounded-2xl p-7 backdrop-blur shadow-[0_0_0_1px_rgba(148,163,184,0.06)]">
+          <h1 className="text-2xl font-bold">My Friend - Cripto</h1>
+          <p className="text-sm text-slate-400 mt-1">Login</p>
 
         <form className="mt-6 space-y-4" onSubmit={submit}>
-          <div className="text-xs text-slate-500">
-            Dica: se não tiver usuário/senha, peça para quem enviou o link.
-          </div>
           <div>
             <label className="text-sm text-slate-300">User</label>
             <input
