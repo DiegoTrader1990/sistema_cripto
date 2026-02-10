@@ -9,6 +9,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -384,36 +385,80 @@ def desk_expiries(currency: str = "BTC", user: dict = Depends(get_user)):
 
 
 @app.get("/api/desk/chain")
-def desk_chain(currency: str = "BTC", expiry: str = "", user: dict = Depends(get_user)):
-    """Return option chain rows + GEX aggregates for a given expiry."""
+def desk_chain(currency: str = "BTC", expiry: str = "", strike_range_pct: float = 7.0, user: dict = Depends(get_user)):
+    """Return option chain rows + GEX aggregates for a given expiry.
+
+    NOTE: Deribit /get_book_summary_by_currency may not include greeks for options reliably.
+    So we fetch /public/ticker for a limited subset around spot to get greeks (gamma) + OI.
+    """
     currency = (currency or "BTC").upper().strip()
     inst = deribit_get("/public/get_instruments", {"currency": currency, "kind": "option", "expired": "false"}) or []
 
     # choose default expiry: nearest
     if not expiry:
-        expiries = sorted({ _expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0)) for x in inst if x.get("expiration_timestamp") })
+        expiries = sorted({_expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0)) for x in inst if x.get("expiration_timestamp")})
         expiries = [e for e in expiries if e]
         expiry = expiries[0] if expiries else ""
 
     inst_exp = [x for x in inst if _expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0)) == expiry]
 
-    summaries = deribit_get("/public/get_book_summary_by_currency", {"currency": currency, "kind": "option"}) or []
-    by_name = { (s.get("instrument_name") or ""): s for s in summaries }
+    # get spot from perpetual ticker
+    perp = f"{currency}-PERPETUAL"
+    spot = 0.0
+    try:
+        tkr, _ = DeribitPublicClient(timeout=8.0).get_ticker(perp)
+        spot = float((tkr.get("last_price") or tkr.get("index_price") or 0.0))
+    except Exception:
+        spot = 0.0
 
-    raw_rows = []
-    chain = []
+    # limit instruments around spot for performance
+    strike_range_pct = max(1.0, min(30.0, float(strike_range_pct)))
+    if spot > 0:
+        lo = spot * (1 - strike_range_pct / 100.0)
+        hi = spot * (1 + strike_range_pct / 100.0)
+        inst_exp = [x for x in inst_exp if float(x.get("strike") or 0.0) >= lo and float(x.get("strike") or 0.0) <= hi]
+
+    # cap instruments
+    inst_exp = inst_exp[:240]
+
+    client = DeribitPublicClient(timeout=8.0)
+
+    def _fetch_one(name: str) -> dict:
+        t, _ = client.get_ticker(name)
+        greeks = (t.get("greeks") or {})
+        return {
+            "instrument_name": name,
+            "underlying_price": float(t.get("underlying_price") or spot or 0.0),
+            "open_interest": float(t.get("open_interest") or 0.0),
+            "bid_price": float(t.get("best_bid_price") or 0.0),
+            "ask_price": float(t.get("best_ask_price") or 0.0),
+            "mark_price": float(t.get("mark_price") or 0.0),
+            "mark_iv": float(t.get("mark_iv") or 0.0),
+            "delta": float(greeks.get("delta") or 0.0),
+            "gamma": float(greeks.get("gamma") or 0.0),
+            "vega": float(greeks.get("vega") or 0.0),
+            "theta": float(greeks.get("theta") or 0.0),
+        }
+
+    # parallel fetch tickers
+    tickers: dict[str, dict] = {}
+    names = [x.get("instrument_name") for x in inst_exp if x.get("instrument_name")]
+    with ThreadPoolExecutor(max_workers=16) as ex:
+        futs = [ex.submit(_fetch_one, n) for n in names]
+        for f in as_completed(futs):
+            try:
+                row = f.result()
+                tickers[row["instrument_name"]] = row
+            except Exception:
+                continue
+
+    raw_rows: list[dict] = []
+    chain: list[dict] = []
     for x in inst_exp:
         name = x.get("instrument_name")
         if not name:
             continue
-        s = by_name.get(name) or {}
-        greeks = (s.get("greeks") or {})
-        bid = float(s.get("bid_price") or 0.0)
-        ask = float(s.get("ask_price") or 0.0)
-        oi = float(s.get("open_interest") or 0.0)
-        spot = float(s.get("underlying_price") or 0.0)
-        gamma = float(greeks.get("gamma") or 0.0)
-        iv = float(s.get("mark_iv") or 0.0)
+        t = tickers.get(name) or {}
         strike = float(x.get("strike") or 0.0)
         opt_type = str(x.get("option_type") or "")
 
@@ -421,21 +466,21 @@ def desk_chain(currency: str = "BTC", expiry: str = "", user: dict = Depends(get
             "instrument_name": name,
             "strike": strike,
             "option_type": opt_type,
-            "open_interest": oi,
-            "gamma": gamma,
-            "bid_price": bid,
-            "ask_price": ask,
-            "mark_iv": iv,
-            "underlying_price": spot,
+            "open_interest": float(t.get("open_interest") or 0.0),
+            "gamma": float(t.get("gamma") or 0.0),
+            "bid_price": float(t.get("bid_price") or 0.0),
+            "ask_price": float(t.get("ask_price") or 0.0),
+            "mark_iv": float(t.get("mark_iv") or 0.0),
+            "underlying_price": float(t.get("underlying_price") or spot or 0.0),
             "expiry": expiry,
         }
         raw_rows.append(row)
         chain.append({
             **row,
-            "delta": float(greeks.get("delta") or 0.0),
-            "vega": float(greeks.get("vega") or 0.0),
-            "theta": float(greeks.get("theta") or 0.0),
-            "mark_price": float(s.get("mark_price") or 0.0),
+            "delta": float(t.get("delta") or 0.0),
+            "vega": float(t.get("vega") or 0.0),
+            "theta": float(t.get("theta") or 0.0),
+            "mark_price": float(t.get("mark_price") or 0.0),
         })
 
     gex_rows = compute_gex_rows(raw_rows)
