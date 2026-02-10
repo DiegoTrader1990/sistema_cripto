@@ -36,6 +36,9 @@ export default function DeskPage() {
   const [flip, setFlip] = useState<number | null>(null);
   const [selectedStrike, setSelectedStrike] = useState<number | null>(null);
   const [planTargetPct, setPlanTargetPct] = useState<number>(1.5);
+  const [chain, setChain] = useState<any[]>([]);
+  const [perStrike, setPerStrike] = useState<any[]>([]);
+  const [strikeRangePct, setStrikeRangePct] = useState<number>(5);
 
   const [optErr, setOptErr] = useState<string | null>(null);
 
@@ -65,6 +68,8 @@ export default function DeskPage() {
         const cg = await apiGet(`/api/desk/chain?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}&expiry=${encodeURIComponent(chosen)}`);
         setFlip(cg.flip ?? null);
         setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
+        setChain(cg.chain || []);
+        setPerStrike(cg.per_strike || []);
       }
     } catch (e: any) {
       setOptErr(String(e?.message || e));
@@ -80,6 +85,26 @@ export default function DeskPage() {
     if (!ohlc?.c?.length) return null;
     return ohlc.c[ohlc.c.length - 1];
   }, [ohlc]);
+
+  const byStrike = useMemo(() => {
+    const m = new Map<number, any>();
+    for (const r of perStrike || []) m.set(Number(r.strike), r);
+    return m;
+  }, [perStrike]);
+
+  const strikeRows = useMemo(() => {
+    // attempt to find spot from last close
+    const spot = last || 0;
+    if (!spot) return Array.from(byStrike.values());
+    const lo = spot * (1 - strikeRangePct / 100);
+    const hi = spot * (1 + strikeRangePct / 100);
+    return Array.from(byStrike.values()).filter((r) => Number(r.strike) >= lo && Number(r.strike) <= hi);
+  }, [byStrike, last, strikeRangePct]);
+
+  const selected = useMemo(() => {
+    if (!selectedStrike) return null;
+    return byStrike.get(Number(selectedStrike)) || null;
+  }, [byStrike, selectedStrike]);
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
@@ -129,6 +154,17 @@ export default function DeskPage() {
           ))}
         </select>
 
+        <label className="text-sm text-slate-300">Range %</label>
+        <input
+          className="bg-slate-900 border border-slate-800 rounded px-2 py-1 w-20"
+          type="number"
+          min={1}
+          max={30}
+          step={1}
+          value={strikeRangePct}
+          onChange={(e) => setStrikeRangePct(parseFloat(e.target.value || '5'))}
+        />
+
         <div className="text-sm text-slate-400">Last: {last ?? '—'}</div>
       </div>
 
@@ -156,6 +192,36 @@ export default function DeskPage() {
               }}
             />
           </div>
+
+          <div className="mt-4">
+            <div className="text-sm text-slate-300 font-semibold">Chain (CALL | STRIKE | PUT)</div>
+            <div className="mt-2 overflow-auto max-h-[320px] border border-slate-800 rounded-xl">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-slate-950 border-b border-slate-800">
+                  <tr>
+                    <th className="text-left p-2">Call bid/ask</th>
+                    <th className="text-left p-2">Strike</th>
+                    <th className="text-left p-2">Put bid/ask</th>
+                    <th className="text-left p-2">NetGEX</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {strikeRows.map((r: any) => (
+                    <tr
+                      key={r.strike}
+                      className={`border-b border-slate-900 hover:bg-slate-900/40 cursor-pointer ${selectedStrike === r.strike ? 'bg-slate-900/50' : ''}`}
+                      onClick={() => setSelectedStrike(Number(r.strike))}
+                    >
+                      <td className="p-2 text-slate-200">{r.call?.bid_price ?? '—'} / {r.call?.ask_price ?? '—'}</td>
+                      <td className="p-2 text-slate-100 font-semibold">{Number(r.strike).toFixed(0)}</td>
+                      <td className="p-2 text-slate-200">{r.put?.bid_price ?? '—'} / {r.put?.ask_price ?? '—'}</td>
+                      <td className="p-2 text-slate-400">{Number(r.net_gex || 0).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <div className="col-span-12 lg:col-span-4 space-y-4">
@@ -166,6 +232,14 @@ export default function DeskPage() {
             <div className="mt-3 text-sm">
               <div><span className="text-slate-400">Flip:</span> {flip ?? '—'}</div>
               <div><span className="text-slate-400">Strike selecionado:</span> {selectedStrike ?? '—'}</div>
+              {selected ? (
+                <div className="mt-2 text-xs text-slate-300 bg-slate-950/40 border border-slate-800 rounded p-3">
+                  <div className="font-semibold">Detalhes do Strike</div>
+                  <div className="mt-1">Net GEX: {Number(selected.net_gex || 0).toFixed(2)}</div>
+                  <div>Call: bid {selected.call?.bid_price ?? '—'} / ask {selected.call?.ask_price ?? '—'} / IV {selected.call?.mark_iv ?? '—'} / OI {selected.call?.open_interest ?? '—'}</div>
+                  <div>Put: bid {selected.put?.bid_price ?? '—'} / ask {selected.put?.ask_price ?? '—'} / IV {selected.put?.mark_iv ?? '—'} / OI {selected.put?.open_interest ?? '—'}</div>
+                </div>
+              ) : null}
             </div>
             <div className="mt-3 flex items-center gap-2 flex-wrap">
               <label className="text-xs text-slate-400">Alvo (%)</label>

@@ -443,6 +443,29 @@ def desk_chain(currency: str = "BTC", expiry: str = "", user: dict = Depends(get
     flip = gamma_flip(strike_net)
     walls = top_walls(strike_net, n=18)
 
+    gex_by_name = {r.instrument_name: float(r.gex) for r in gex_rows}
+
+    # enrich chain with gex
+    for row in chain:
+        row["gex"] = float(gex_by_name.get(row.get("instrument_name") or "", 0.0))
+
+    # per-strike aggregation (call/put)
+    per_strike: Dict[float, Dict[str, Any]] = {}
+    for row in chain:
+        k = float(row.get("strike") or 0.0)
+        if k not in per_strike:
+            per_strike[k] = {"strike": k, "call": None, "put": None, "net_gex": 0.0, "call_gex": 0.0, "put_gex": 0.0}
+        opt = str(row.get("option_type") or "")
+        if opt == "call":
+            per_strike[k]["call"] = row
+            per_strike[k]["call_gex"] = float(row.get("gex") or 0.0)
+        elif opt == "put":
+            per_strike[k]["put"] = row
+            per_strike[k]["put_gex"] = float(row.get("gex") or 0.0)
+        per_strike[k]["net_gex"] = float(per_strike[k]["call_gex"]) + float(per_strike[k]["put_gex"])
+
+    per_strike_list = [per_strike[k] for k in sorted(per_strike.keys())]
+
     return {
         "ok": True,
         "currency": currency,
@@ -452,6 +475,7 @@ def desk_chain(currency: str = "BTC", expiry: str = "", user: dict = Depends(get
         "flip": flip,
         "walls": [{"strike": k, "gex": v} for (k, v) in walls],
         "strike_net": [{"strike": k, "gex": v} for (k, v) in strike_net.items()],
+        "per_strike": per_strike_list,
         "chain": chain,
     }
 
