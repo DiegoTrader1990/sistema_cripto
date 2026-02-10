@@ -16,6 +16,9 @@ type PaperTrade = {
   spot: number;
   targetPct: number;
   pricing: 'MARK' | 'MID';
+  // instruments (for real-time MTM)
+  callName: string;
+  putName: string;
   callPremUsd: number;
   putPremUsd: number;
   totalCostUsd: number;
@@ -23,10 +26,23 @@ type PaperTrade = {
   // close
   closedTs?: number;
   closeSpot?: number;
+  closeValueUsd?: number;
   pnlUsd?: number;
 };
 
 const LS_KEY = 'paperbox.v1';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
+
+async function apiGet(path: string) {
+  const tok = localStorage.getItem('token') || '';
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${tok}` },
+    cache: 'no-store',
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || 'request failed');
+  return data;
+}
 
 function mid(b?: number, a?: number) {
   const bb = Number(b || 0);
@@ -43,6 +59,13 @@ function premUsd(row: any, spot: number, pricing: 'MARK' | 'MID') {
   return prem * spot;
 }
 
+function premUsdFromTicker(t: any, spot: number, pricing: 'MARK' | 'MID') {
+  const mark = Number(t?.mark_price || 0);
+  const m = mid(t?.best_bid_price, t?.best_ask_price);
+  const prem = pricing === 'MARK' ? (mark || m) : (m || mark);
+  return prem * Number(spot || 0);
+}
+
 export default function PaperBoxCard({
   selected,
   expiry,
@@ -57,7 +80,13 @@ export default function PaperBoxCard({
   const [cash0, setCash0] = useState(1000);
   const [riskUsd, setRiskUsd] = useState(150);
   const [pricing, setPricing] = useState<'MARK' | 'MID'>('MARK');
+  const [autoOn, setAutoOn] = useState<boolean>(true);
+  const [tpUsd, setTpUsd] = useState<number>(150);
+  const [slUsd, setSlUsd] = useState<number>(150);
   const [trades, setTrades] = useState<PaperTrade[]>([]);
+
+  const [mtm, setMtm] = useState<Record<string, { ts: number; valueUsd: number; pnlUsd: number }>>({});
+  const [mtmErr, setMtmErr] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -66,6 +95,9 @@ export default function PaperBoxCard({
       const obj = JSON.parse(raw);
       if (typeof obj?.cash0 === 'number') setCash0(obj.cash0);
       if (typeof obj?.riskUsd === 'number') setRiskUsd(obj.riskUsd);
+      if (typeof obj?.tpUsd === 'number') setTpUsd(obj.tpUsd);
+      if (typeof obj?.slUsd === 'number') setSlUsd(obj.slUsd);
+      if (typeof obj?.autoOn === 'boolean') setAutoOn(obj.autoOn);
       if (obj?.pricing === 'MID') setPricing('MID');
       if (Array.isArray(obj?.trades)) setTrades(obj.trades);
     } catch {
@@ -75,7 +107,7 @@ export default function PaperBoxCard({
 
   useEffect(() => {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ cash0, riskUsd, pricing, trades }));
+      localStorage.setItem(LS_KEY, JSON.stringify({ cash0, riskUsd, pricing, autoOn, tpUsd, slUsd, trades }));
     } catch {
       // ignore
     }
@@ -94,6 +126,10 @@ export default function PaperBoxCard({
   function simulateEntry() {
     if (!selected || !selected.call || !selected.put || !spot) return;
 
+    const callName = String(selected.call?.instrument_name || '');
+    const putName = String(selected.put?.instrument_name || '');
+    if (!callName || !putName) return;
+
     const callPrem = premUsd(selected.call, spot, pricing);
     const putPrem = premUsd(selected.put, spot, pricing);
     const total = callPrem + putPrem;
@@ -106,6 +142,8 @@ export default function PaperBoxCard({
       spot,
       targetPct,
       pricing,
+      callName,
+      putName,
       callPremUsd: callPrem,
       putPremUsd: putPrem,
       totalCostUsd: total,
@@ -138,9 +176,22 @@ export default function PaperBoxCard({
     setTrades(
       trades.map((t) => {
         if (t.id !== id) return t;
+
+        // Prefer MTM if available (real-time), otherwise fallback to intrinsic approximation.
+        const m = mtm[id];
+        if (m) {
+          return {
+            ...t,
+            closedTs: Date.now(),
+            closeSpot,
+            closeValueUsd: Number(m.valueUsd || 0),
+            pnlUsd: Number(m.pnlUsd || 0),
+          };
+        }
+
         const out = calcPnlAtSpot(t, closeSpot);
         if (!out) return t;
-        return { ...t, closedTs: Date.now(), closeSpot: out.closeSpot, pnlUsd: out.pnlUsd };
+        return { ...t, closedTs: Date.now(), closeSpot: out.closeSpot, closeValueUsd: out.gross, pnlUsd: out.pnlUsd };
       })
     );
   }
@@ -150,20 +201,103 @@ export default function PaperBoxCard({
     setTrades([]);
   }
 
+  // Real-time MTM (mark/mid) for open trades
+  useEffect(() => {
+    let alive = true;
+    let timer: any = null;
+
+    async function tick() {
+      if (!openTrades.length || !spot) return;
+      try {
+        setMtmErr(null);
+        const sp = Number(spot || 0);
+        const next: Record<string, { ts: number; valueUsd: number; pnlUsd: number }> = {};
+
+        // Limit per tick to avoid spam (demo). Most times you have few open trades.
+        const list = openTrades.slice(0, 8);
+        for (const t of list) {
+          if (!t.callName || !t.putName) continue;
+          const [c, p] = await Promise.all([
+            apiGet(`/api/desk/ticker?instrument=${encodeURIComponent(t.callName)}`),
+            apiGet(`/api/desk/ticker?instrument=${encodeURIComponent(t.putName)}`),
+          ]);
+          const callUsd = premUsdFromTicker(c.ticker, sp, t.pricing);
+          const putUsd = premUsdFromTicker(p.ticker, sp, t.pricing);
+          const valueUsd = callUsd + putUsd;
+          const pnlUsd = valueUsd - Number(t.totalCostUsd || 0);
+          next[t.id] = { ts: Date.now(), valueUsd, pnlUsd };
+        }
+
+        if (!alive) return;
+        setMtm((prev) => ({ ...prev, ...next }));
+      } catch (e: any) {
+        if (!alive) return;
+        setMtmErr(String(e?.message || e));
+      }
+    }
+
+    tick();
+    timer = setInterval(tick, 2000);
+    return () => {
+      alive = false;
+      if (timer) clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTrades.length, spot]);
+
+  // Auto TP/SL (closes using MTM value)
+  useEffect(() => {
+    if (!autoOn) return;
+    if (!openTrades.length) return;
+
+    const now = Date.now();
+    const toClose: { id: string; reason: string }[] = [];
+
+    for (const t of openTrades) {
+      const m = mtm[t.id];
+      if (!m) continue;
+      // require reasonably fresh mtm
+      if (now - Number(m.ts || 0) > 10_000) continue;
+      if (tpUsd > 0 && m.pnlUsd >= tpUsd) toClose.push({ id: t.id, reason: `TP +${tpUsd}` });
+      if (slUsd > 0 && m.pnlUsd <= -Math.abs(slUsd)) toClose.push({ id: t.id, reason: `SL -${slUsd}` });
+    }
+
+    if (!toClose.length) return;
+
+    setTrades(
+      trades.map((t) => {
+        const hit = toClose.find((x) => x.id === t.id);
+        if (!hit) return t;
+        const m = mtm[t.id];
+        if (!m) return t;
+        return {
+          ...t,
+          note: (t.note ? t.note + ' | ' : '') + `auto:${hit.reason}`,
+          closedTs: Date.now(),
+          closeSpot: Number(spot || 0),
+          closeValueUsd: Number(m.valueUsd || 0),
+          pnlUsd: Number(m.pnlUsd || 0),
+        };
+      })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOn, tpUsd, slUsd, mtm, openTrades.length, spot]);
+
   const openWithMtM = useMemo(() => {
     const sp = Number(spot || 0);
     return openTrades
       .map((t) => {
-        const out = calcPnlAtSpot(t, sp);
-        const pnlUsd = out?.pnlUsd ?? null;
+        const m = mtm[t.id];
+        const pnlUsd = m?.pnlUsd ?? null;
+        const valueUsd = m?.valueUsd ?? null;
         const K = Number(t.strike || 0);
         const cost = Number(t.totalCostUsd || 0);
         const beLow = K - cost;
         const beHigh = K + cost;
-        return { t, pnlUsd, beLow, beHigh };
+        return { t, pnlUsd, valueUsd, beLow, beHigh, sp };
       })
       .sort((a, b) => Number(b.t.ts) - Number(a.t.ts));
-  }, [openTrades, spot]);
+  }, [openTrades, spot, mtm]);
 
   return (
     <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
@@ -192,6 +326,27 @@ export default function PaperBoxCard({
         </div>
       </div>
 
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-2">
+          <div className="text-[11px] text-slate-400">Auto TP/SL</div>
+          <label className="mt-2 flex items-center gap-2 text-xs text-slate-300">
+            <input type="checkbox" checked={autoOn} onChange={(e) => setAutoOn(e.target.checked)} />
+            Ativar
+          </label>
+          {mtmErr ? <div className="mt-1 text-[11px] text-amber-300">mtm: {mtmErr}</div> : null}
+        </div>
+        <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-2">
+          <div className="text-[11px] text-slate-400">Take Profit (USD)</div>
+          <input className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" type="number" value={tpUsd} onChange={(e) => setTpUsd(Number(e.target.value || 0))} />
+          <div className="text-[11px] text-slate-500">fecha quando PnL ≥ TP</div>
+        </div>
+        <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-2">
+          <div className="text-[11px] text-slate-400">Stop Loss (USD)</div>
+          <input className="mt-1 w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm" type="number" value={slUsd} onChange={(e) => setSlUsd(Number(e.target.value || 0))} />
+          <div className="text-[11px] text-slate-500">fecha quando PnL ≤ -SL</div>
+        </div>
+      </div>
+
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
           <div className="text-[11px] text-slate-400">Equity (realizado)</div>
@@ -215,7 +370,7 @@ export default function PaperBoxCard({
         <div className="text-xs text-slate-400">Abertas: {openTrades.length} · Fechadas: {closedTrades.length}</div>
 
         <div className="mt-2 space-y-2 max-h-[240px] overflow-auto">
-          {openWithMtM.map(({ t, pnlUsd, beLow, beHigh }) => (
+          {openWithMtM.map(({ t, pnlUsd, valueUsd, beLow, beHigh }) => (
             <div key={t.id} className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -249,11 +404,11 @@ export default function PaperBoxCard({
                   <div className="text-[11px] text-slate-500">spot: {Number(spot || 0).toFixed(0)}</div>
                 </div>
                 <div>
-                  <div className="text-[11px] text-slate-400">PnL (não realizado)</div>
+                  <div className="text-[11px] text-slate-400">PnL (mark-to-market)</div>
                   <div className={`text-sm font-semibold ${pnlUsd == null ? 'text-slate-500' : pnlUsd >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
                     {pnlUsd == null ? '—' : `${pnlUsd >= 0 ? '+' : ''}${pnlUsd.toFixed(2)}`}
                   </div>
-                  <div className="text-[11px] text-slate-500">(aprox. por payoff intrínseco)</div>
+                  <div className="text-[11px] text-slate-500">valor: {valueUsd == null ? '—' : `$${valueUsd.toFixed(2)}`}</div>
                 </div>
               </div>
             </div>
