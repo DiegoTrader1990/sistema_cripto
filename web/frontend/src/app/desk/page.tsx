@@ -37,13 +37,25 @@ export default function DeskPage() {
   const [selectedStrike, setSelectedStrike] = useState<number | null>(null);
   const [planTargetPct, setPlanTargetPct] = useState<number>(1.5);
 
+  const [optErr, setOptErr] = useState<string | null>(null);
+
   async function refresh() {
     setErr(null);
+    setOptErr(null);
     try {
       const data = await apiGet(`/api/desk/ohlc?instrument=${encodeURIComponent(instrument)}&tf=${encodeURIComponent(tf)}&candles=${candles}`);
       setOhlc(data.ohlc);
+    } catch (e: any) {
+      setErr(String(e?.message || e));
+      if (String(e?.message || '').includes('unauthorized')) {
+        localStorage.removeItem('token');
+        r.push('/login');
+      }
+      return;
+    }
 
-      // options/gex (BTC only for now)
+    // options/gex (non-blocking)
+    try {
       const ex = await apiGet(`/api/desk/expiries?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}`);
       const exs = (ex.expiries || []) as string[];
       setExpiries(exs);
@@ -52,15 +64,10 @@ export default function DeskPage() {
       if (chosen) {
         const cg = await apiGet(`/api/desk/chain?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}&expiry=${encodeURIComponent(chosen)}`);
         setFlip(cg.flip ?? null);
-        // take top walls as levels
         setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
       }
     } catch (e: any) {
-      setErr(String(e?.message || e));
-      if (String(e?.message || '').includes('unauthorized')) {
-        localStorage.removeItem('token');
-        r.push('/login');
-      }
+      setOptErr(String(e?.message || e));
     }
   }
 
@@ -155,6 +162,7 @@ export default function DeskPage() {
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
             <div className="text-sm font-semibold">Operacional (Long Strangle)</div>
             <div className="text-xs text-slate-500 mt-1">Clique no gráfico para selecionar o nível GEX mais próximo.</div>
+            {optErr ? <div className="mt-2 text-xs text-amber-400">GEX/Chain: {optErr}</div> : null}
             <div className="mt-3 text-sm">
               <div><span className="text-slate-400">Flip:</span> {flip ?? '—'}</div>
               <div><span className="text-slate-400">Strike selecionado:</span> {selectedStrike ?? '—'}</div>
