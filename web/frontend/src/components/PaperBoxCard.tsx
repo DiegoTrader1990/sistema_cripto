@@ -20,6 +20,7 @@ type PaperTrade = {
   putPremUsd: number;
   totalCostUsd: number;
   note?: string;
+  // close
   closedTs?: number;
   closeSpot?: number;
   pnlUsd?: number;
@@ -112,22 +113,34 @@ export default function PaperBoxCard({
     setTrades([t, ...trades]);
   }
 
-  function closeTrade(id: string) {
-    const closeSpotStr = prompt('Fechar operação: informe spot de saída (USD)', String(spot || ''));
-    if (!closeSpotStr) return;
-    const closeSpot = Number(closeSpotStr);
+  function calcPnlAtSpot(t: PaperTrade, sp: number) {
+    const closeSpot = Number(sp || 0);
+    if (!closeSpot || closeSpot <= 0) return null;
+    const K = Number(t.strike || 0);
+    const callPay = Math.max(0, closeSpot - K);
+    const putPay = Math.max(0, K - closeSpot);
+    const gross = callPay + putPay;
+    const pnlUsd = gross - Number(t.totalCostUsd || 0);
+    return { closeSpot, gross, pnlUsd };
+  }
+
+  function closeTrade(id: string, closeSpotOverride?: number) {
+    let closeSpot = Number(closeSpotOverride || 0);
+
+    if (!closeSpot) {
+      const closeSpotStr = prompt('Fechar operação: informe spot de saída (USD)', String(spot || ''));
+      if (!closeSpotStr) return;
+      closeSpot = Number(closeSpotStr);
+    }
+
     if (!closeSpot || closeSpot <= 0) return;
 
     setTrades(
       trades.map((t) => {
         if (t.id !== id) return t;
-        // rough payoff at close
-        const K = t.strike;
-        const callPay = Math.max(0, closeSpot - K);
-        const putPay = Math.max(0, K - closeSpot);
-        const gross = callPay + putPay;
-        const pnlUsd = gross - t.totalCostUsd;
-        return { ...t, closedTs: Date.now(), closeSpot, pnlUsd };
+        const out = calcPnlAtSpot(t, closeSpot);
+        if (!out) return t;
+        return { ...t, closedTs: Date.now(), closeSpot: out.closeSpot, pnlUsd: out.pnlUsd };
       })
     );
   }
@@ -136,6 +149,21 @@ export default function PaperBoxCard({
     if (!confirm('Resetar simulações?')) return;
     setTrades([]);
   }
+
+  const openWithMtM = useMemo(() => {
+    const sp = Number(spot || 0);
+    return openTrades
+      .map((t) => {
+        const out = calcPnlAtSpot(t, sp);
+        const pnlUsd = out?.pnlUsd ?? null;
+        const K = Number(t.strike || 0);
+        const cost = Number(t.totalCostUsd || 0);
+        const beLow = K - cost;
+        const beHigh = K + cost;
+        return { t, pnlUsd, beLow, beHigh };
+      })
+      .sort((a, b) => Number(b.t.ts) - Number(a.t.ts));
+  }, [openTrades, spot]);
 
   return (
     <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
@@ -185,18 +213,55 @@ export default function PaperBoxCard({
 
       <div className="mt-3">
         <div className="text-xs text-slate-400">Abertas: {openTrades.length} · Fechadas: {closedTrades.length}</div>
-        <div className="mt-2 space-y-2 max-h-[220px] overflow-auto">
-          {openTrades.map((t) => (
+
+        <div className="mt-2 space-y-2 max-h-[240px] overflow-auto">
+          {openWithMtM.map(({ t, pnlUsd, beLow, beHigh }) => (
             <div key={t.id} className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-semibold">STRANGLE {t.strike} · {t.expiry}</div>
-                <button className="text-xs text-slate-300 hover:text-white" onClick={() => closeTrade(t.id)}>
-                  Encerrar
-                </button>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold">STRADDLE {t.strike} · {t.expiry}</div>
+                  <div className="text-[11px] text-slate-500">aberta: {new Date(t.ts).toLocaleString()}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="text-xs bg-slate-900 border border-slate-800 rounded px-2 py-1 hover:border-slate-600"
+                    onClick={() => closeTrade(t.id, Number(spot || 0))}
+                    disabled={!spot}
+                    title="Fechar usando o spot atual"
+                  >
+                    Fechar @spot
+                  </button>
+                  <button className="text-xs text-slate-300 hover:text-white" onClick={() => closeTrade(t.id)}>
+                    Encerrar
+                  </button>
+                </div>
               </div>
-              <div className="mt-1 text-[11px] text-slate-400">Custo: ${t.totalCostUsd.toFixed(2)} (C ${t.callPremUsd.toFixed(2)} + P ${t.putPremUsd.toFixed(2)}) · {t.pricing}</div>
+
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <div>
+                  <div className="text-[11px] text-slate-400">Custo</div>
+                  <div className="text-[11px] text-slate-200">${t.totalCostUsd.toFixed(2)} ({t.pricing})</div>
+                  <div className="text-[11px] text-slate-500">C ${t.callPremUsd.toFixed(2)} + P ${t.putPremUsd.toFixed(2)}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-slate-400">Breakevens</div>
+                  <div className="text-[11px] text-slate-200">{beLow.toFixed(0)} / {beHigh.toFixed(0)}</div>
+                  <div className="text-[11px] text-slate-500">spot: {Number(spot || 0).toFixed(0)}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-slate-400">PnL (não realizado)</div>
+                  <div className={`text-sm font-semibold ${pnlUsd == null ? 'text-slate-500' : pnlUsd >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {pnlUsd == null ? '—' : `${pnlUsd >= 0 ? '+' : ''}${pnlUsd.toFixed(2)}`}
+                  </div>
+                  <div className="text-[11px] text-slate-500">(aprox. por payoff intrínseco)</div>
+                </div>
+              </div>
             </div>
           ))}
+
+          {!openWithMtM.length ? (
+            <div className="text-xs text-slate-500">Nenhuma operação aberta.</div>
+          ) : null}
         </div>
       </div>
     </div>
