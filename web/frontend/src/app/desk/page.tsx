@@ -36,6 +36,8 @@ export default function DeskPage() {
   const [ohlc, setOhlc] = useState<OhlcWithVol | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [bootLoading, setBootLoading] = useState<boolean>(true);
+  const [bootMsg, setBootMsg] = useState<string>('Carregando…');
+  const [bootPct, setBootPct] = useState<number>(10);
 
   // options/gex
   const [expiry, setExpiry] = useState<string>('');
@@ -58,6 +60,10 @@ export default function DeskPage() {
     setOptErr(null);
 
     try {
+      if (bootLoading) {
+        setBootMsg('Carregando gráfico…');
+        setBootPct(20);
+      }
       const data = await apiGet(
         `/api/desk/ohlc?instrument=${encodeURIComponent(instrument)}&tf=${encodeURIComponent(tf)}&candles=${candles}`
       );
@@ -74,6 +80,10 @@ export default function DeskPage() {
 
     // options/gex
     try {
+      if (bootLoading) {
+        setBootMsg('Carregando vencimentos (expiries)…');
+        setBootPct(40);
+      }
       const ex = await apiGet(`/api/desk/expiries?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}`);
       const exs = (ex.expiries || []) as string[];
       setExpiries(exs);
@@ -83,6 +93,10 @@ export default function DeskPage() {
         const currency = instrument.startsWith('ETH') ? 'ETH' : 'BTC';
 
         // 1) Chain (execution pricing) is per-expiry (D1/D2/manual)
+        if (bootLoading) {
+          setBootMsg('Carregando chain (opções)…');
+          setBootPct(60);
+        }
         const cg = await apiGet(`/api/desk/chain?currency=${currency}&expiry=${encodeURIComponent(chosen)}`);
         setFlip(cg.flip ?? null);
         const chainRows = cg.chain || [];
@@ -90,6 +104,10 @@ export default function DeskPage() {
         // 2) Walls strength: ALL expiries (user requested)
         try {
           if (gexMode === 'ALL') {
+            if (bootLoading) {
+              setBootMsg('Carregando walls (GEX ALL)…');
+              setBootPct(85);
+            }
             const all = await apiGet(`/api/desk/walls?currency=${currency}&mode=all&strike_range_pct=${encodeURIComponent(String(Math.max(8, strikeRangePct)))}`);
             setGexLevels((all.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
             setWallsN((all.walls || []).length || 18);
@@ -121,7 +139,14 @@ export default function DeskPage() {
     } catch (e: any) {
       setOptErr(String(e?.message || e));
     } finally {
-      setBootLoading(false);
+      if (bootLoading) {
+        setBootMsg('Pronto.');
+        setBootPct(100);
+        // small delay so user sees 100%
+        setTimeout(() => setBootLoading(false), 250);
+      } else {
+        setBootLoading(false);
+      }
     }
   }
 
@@ -200,10 +225,11 @@ export default function DeskPage() {
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 w-[min(520px,90vw)]">
             <div className="text-lg font-bold">Aguarde My Friend…</div>
-            <div className="mt-2 text-sm text-slate-300">Carregando mercado, opções, GEX e walls em tempo real.</div>
+            <div className="mt-2 text-sm text-slate-300">{bootMsg}</div>
             <div className="mt-4 h-2 rounded bg-slate-800 overflow-hidden">
-              <div className="h-2 w-1/2 bg-blue-600 animate-pulse" />
+              <div className="h-2 bg-blue-600 transition-all duration-300" style={{ width: `${Math.max(5, Math.min(100, bootPct))}%` }} />
             </div>
+            <div className="mt-2 text-xs text-slate-400">{bootPct.toFixed(0)}%</div>
             <div className="mt-3 text-xs text-slate-500">Se demorar, pode ser o Render “acordando”.</div>
           </div>
         </div>
