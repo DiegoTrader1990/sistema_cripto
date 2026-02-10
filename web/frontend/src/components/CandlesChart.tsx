@@ -107,47 +107,50 @@ export default function CandlesChart({
   }, [data]);
 
   useEffect(() => {
-    const chart = chartRef.current;
     const series = seriesRef.current;
-    if (!chart || !series) return;
+    if (!series) return;
 
     // clear existing lines
-    try {
-      for (const ln of linesRef.current) {
-        try {
-          series.removePriceLine(ln);
-        } catch {
-          // ignore
-        }
+    for (const ln of linesRef.current) {
+      try {
+        series.removePriceLine(ln);
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
     linesRef.current = [];
 
     for (const lv of levels || []) {
-      const ln = series.createPriceLine({
-        price: lv.price,
-        color: lv.color || 'rgba(99, 102, 241, 0.55)',
-        lineWidth: 1,
-        lineStyle: 2,
-        axisLabelVisible: true,
-        title: lv.label || '',
-      });
-      linesRef.current.push(ln);
+      try {
+        const ln = series.createPriceLine({
+          price: Number(lv.price),
+          color: lv.color || 'rgba(99, 102, 241, 0.75)',
+          lineWidth: 2,
+          lineStyle: 0,
+          axisLabelVisible: true,
+          title: lv.label || '',
+        });
+        linesRef.current.push(ln);
+      } catch {
+        // ignore
+      }
     }
   }, [levels]);
 
   useEffect(() => {
     const chart = chartRef.current;
-    if (!chart || !onPickPrice) return;
+    const series = seriesRef.current;
+    if (!chart || !series || !onPickPrice) return;
+
     const handler = (param: any) => {
-      const p = param?.seriesData?.values?.().next?.().value;
-      // param.price exists for some cases; fallback to close
-      const price = Number(param?.price || p?.close || 0);
+      // v4: use click point -> price
+      const y = param?.point?.y;
+      if (typeof y !== 'number') return;
+      // @ts-ignore
+      const price = Number(series.coordinateToPrice(y));
       if (price > 0) onPickPrice(price);
     };
-    // lightweight-charts v4
+
     // @ts-ignore
     chart.subscribeClick(handler);
     return () => {
