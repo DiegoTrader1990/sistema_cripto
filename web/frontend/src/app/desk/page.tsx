@@ -149,81 +149,17 @@ export default function DeskPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-bold">Desk</h1>
-        <a className="text-sm text-slate-400 hover:text-slate-200" href="/login">
-          (trocar login)
-        </a>
-        <a className="text-sm text-slate-400 hover:text-slate-200" href="/news">News</a>
-        <a className="text-sm text-slate-400 hover:text-slate-200" href="/report">Relatório</a>
-        <a className="text-sm text-slate-400 hover:text-slate-200" href="/help">Tutorial</a>
+        <div className="flex items-center gap-2 flex-wrap">
+          <a className="text-sm text-slate-400 hover:text-slate-200" href="/news">News</a>
+          <a className="text-sm text-slate-400 hover:text-slate-200" href="/report">Relatório</a>
+          <a className="text-sm text-slate-400 hover:text-slate-200" href="/help">Tutorial</a>
+          <a className="text-sm bg-slate-900 border border-slate-800 rounded px-3 py-1 hover:border-slate-600" href="/login">Trocar login</a>
+        </div>
       </div>
 
-      <div className="mt-4 flex gap-3 items-center flex-wrap">
-        <label className="text-sm text-slate-300">Instrument</label>
-        <select className="bg-slate-900 border border-slate-800 rounded px-2 py-1" value={instrument} onChange={(e) => setInstrument(e.target.value)}>
-          <option>BTC-PERPETUAL</option>
-          <option>ETH-PERPETUAL</option>
-        </select>
-
-        <label className="text-sm text-slate-300">TF</label>
-        <select className="bg-slate-900 border border-slate-800 rounded px-2 py-1" value={tf} onChange={(e) => setTf(e.target.value)}>
-          <option value="1">1</option>
-          <option value="5">5</option>
-          <option value="15">15</option>
-          <option value="60">60</option>
-          <option value="240">240</option>
-          <option value="1D">1D</option>
-        </select>
-
-        <label className="text-sm text-slate-300">Candles</label>
-        <input
-          className="bg-slate-900 border border-slate-800 rounded px-2 py-1 w-28"
-          type="number"
-          min={120}
-          max={3000}
-          value={candles}
-          onChange={(e) => setCandles(parseInt(e.target.value || '900', 10))}
-        />
-
-        <button className="bg-blue-600 hover:bg-blue-500 rounded px-3 py-1" onClick={refresh}>
-          Atualizar
-        </button>
-
-        <label className="text-sm text-slate-300">Live</label>
-        <input type="checkbox" checked={liveOn} onChange={(e) => setLiveOn(e.target.checked)} />
-        <select className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs" value={liveSec} onChange={(e)=>setLiveSec(parseInt(e.target.value||'8',10))}>
-          <option value={4}>4s</option>
-          <option value={8}>8s</option>
-          <option value={15}>15s</option>
-        </select>
-
-        <label className="text-sm text-slate-300">GEX</label>
-        <input type="checkbox" checked={gexOn} onChange={(e) => setGexOn(e.target.checked)} />
-        <div className="text-xs text-slate-500">walls: {gexLevels.length}</div>
-
-        <label className="text-sm text-slate-300">Expiry</label>
-        <select className="bg-slate-900 border border-slate-800 rounded px-2 py-1" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
-          {expiries.map((e) => (
-            <option key={e} value={e}>
-              {e}
-            </option>
-          ))}
-        </select>
-
-        <label className="text-sm text-slate-300">Range %</label>
-        <input
-          className="bg-slate-900 border border-slate-800 rounded px-2 py-1 w-20"
-          type="number"
-          min={1}
-          max={30}
-          step={1}
-          value={strikeRangePct}
-          onChange={(e) => setStrikeRangePct(parseFloat(e.target.value || '5'))}
-        />
-
-        <div className="text-sm text-slate-400">Last: {last ?? '—'}</div>
-      </div>
+      <div className="mt-2 text-xs text-slate-500">Controles do terminal ficam dentro do card do gráfico (overlay).</div>
 
       {err ? <div className="mt-4 text-sm text-red-400">{err}</div> : null}
 
@@ -234,7 +170,52 @@ export default function DeskPage() {
               key: 'chart',
               title: 'Chart',
               node: (
-                <div className="aspect-square">
+                <div className="aspect-square relative">
+                  <div className="absolute left-2 top-2 z-10 bg-slate-950/60 backdrop-blur border border-slate-800 rounded-xl px-2 py-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs" value={instrument} onChange={(e) => setInstrument(e.target.value)}>
+                        <option>BTC-PERPETUAL</option>
+                        <option>ETH-PERPETUAL</option>
+                      </select>
+                      <select className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs" value={tf} onChange={(e) => setTf(e.target.value)}>
+                        <option value="1">1m</option>
+                        <option value="5">5m</option>
+                        <option value="15">15m</option>
+                        <option value="60">1h</option>
+                        <option value="240">4h</option>
+                        <option value="1D">1D</option>
+                      </select>
+                      <input className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs w-20" type="number" min={120} max={3000} value={candles} onChange={(e) => setCandles(parseInt(e.target.value || '900', 10))} />
+                      <button className="bg-blue-600 hover:bg-blue-500 rounded px-2 py-1 text-xs" onClick={refresh}>Sync</button>
+                    </div>
+
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <label className="text-[11px] text-slate-300">Live</label>
+                      <input type="checkbox" checked={liveOn} onChange={(e) => setLiveOn(e.target.checked)} />
+                      <select className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs" value={liveSec} onChange={(e)=>setLiveSec(parseInt(e.target.value||'8',10))}>
+                        <option value={4}>4s</option>
+                        <option value={8}>8s</option>
+                        <option value={15}>15s</option>
+                      </select>
+
+                      <label className="text-[11px] text-slate-300">GEX</label>
+                      <input type="checkbox" checked={gexOn} onChange={(e) => setGexOn(e.target.checked)} />
+                      <span className="text-[11px] text-slate-400">{gexLevels.length} walls</span>
+
+                      <label className="text-[11px] text-slate-300">Expiry</label>
+                      <select className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
+                        {expiries.map((e) => (
+                          <option key={e} value={e}>{e}</option>
+                        ))}
+                      </select>
+
+                      <label className="text-[11px] text-slate-300">Range%</label>
+                      <input className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs w-16" type="number" min={1} max={30} step={1} value={strikeRangePct} onChange={(e) => setStrikeRangePct(parseFloat(e.target.value || '5'))} />
+
+                      <span className="text-[11px] text-slate-400">Last: {last ?? '—'}</span>
+                    </div>
+                  </div>
+
                   <CandlesChart
                     className="w-full h-full"
                     ohlc={ohlc}
