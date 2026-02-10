@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
 import CandlesChart, { type Ohlc } from '@/components/CandlesChart';
+import PaperBoxCard from '@/components/PaperBoxCard';
 
 type OhlcWithVol = Ohlc & { v?: number[] };
 
@@ -188,17 +189,21 @@ export default function DeskPage() {
       {err ? <div className="mt-4 text-sm text-red-400">{err}</div> : null}
 
       <div className="mt-6 grid grid-cols-12 gap-4">
-        <div className="col-span-12 lg:col-span-8 bg-slate-900/40 border border-slate-800 rounded-xl p-4">
-          <div className="text-sm text-slate-300 font-semibold">Chart</div>
-          <div className="mt-3">
+        <div className="col-span-12 lg:col-span-7 bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-slate-300 font-semibold">Chart</div>
+            <div className="text-xs text-slate-500">terminal view</div>
+          </div>
+          <div className="mt-3 aspect-square">
             <CandlesChart
+              className="w-full h-full"
               ohlc={ohlc}
               levels={
                 gexOn
                   ? [
                       ...(flip ? [{ price: Number(flip), label: 'FLIP', color: 'rgba(34, 197, 94, 0.75)' }] : []),
-                      ...(selectedStrike ? [{ price: Number(selectedStrike), label: 'SEL', color: 'rgba(59, 130, 246, 0.85)' }] : []),
-                      ...gexLevels.map((x) => ({ price: Number(x.strike), label: 'WALL', color: 'rgba(168, 85, 247, 0.55)' })),
+                      ...(selectedStrike ? [{ price: Number(selectedStrike), label: 'SEL', color: 'rgba(59, 130, 246, 0.90)' }] : []),
+                      ...gexLevels.map((x) => ({ price: Number(x.strike), label: 'WALL', color: 'rgba(168, 85, 247, 0.65)' })),
                     ]
                   : []
               }
@@ -250,8 +255,8 @@ export default function DeskPage() {
           </div>
         </div>
 
-        <div className="col-span-12 lg:col-span-4 space-y-4">
-          <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
+        <div className="col-span-12 lg:col-span-5 space-y-4">
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
             <div className="text-sm font-semibold">Operacional (Long Strangle)</div>
             <div className="text-xs text-slate-500 mt-1">Clique no gráfico para selecionar o nível GEX mais próximo. Se o clique não funcionar, use a lista de níveis abaixo.</div>
             {optErr ? <div className="mt-2 text-xs text-amber-400">GEX/Chain: {optErr}</div> : null}
@@ -299,9 +304,11 @@ export default function DeskPage() {
               )}
             </div>
           </div>
-          <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4">
+          <PaperBoxCard selected={selectedStrike ? { strike: Number(selectedStrike), ...(selected || {}) } : null} expiry={expiry} spot={Number(last || 0)} targetPct={planTargetPct} />
+
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
             <div className="text-sm font-semibold">News</div>
-            <div className="text-xs text-slate-500 mt-1">Próximo passo: lista + abrir dentro do sistema + análise (favorável/contra + ativos impactados).</div>
+            <div className="text-xs text-slate-500 mt-1">Abra a aba News para ler dentro do sistema.</div>
           </div>
         </div>
       </div>

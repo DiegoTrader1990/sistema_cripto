@@ -28,10 +28,12 @@ export default function CandlesChart({
   ohlc,
   levels,
   onPickPrice,
+  className,
 }: {
   ohlc: Ohlc | null;
   levels?: GexLevel[];
   onPickPrice?: (price: number) => void;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -196,5 +198,5 @@ export default function CandlesChart({
     };
   }, [onPickPrice]);
 
-  return <div ref={ref} className="w-full h-[440px]" />;
+  return <div ref={ref} className={className || "w-full h-[440px]"} />;
 }
