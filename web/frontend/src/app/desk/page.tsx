@@ -38,6 +38,7 @@ export default function DeskPage() {
   const [expiry, setExpiry] = useState<string>('');
   const [expiries, setExpiries] = useState<string[]>([]);
   const [gexOn, setGexOn] = useState<boolean>(true);
+  const [gexMode, setGexMode] = useState<'ALL' | 'EXPIRY'>('ALL');
   const [gexLevels, setGexLevels] = useState<{ strike: number; gex: number }[]>([]);
   const [wallsN, setWallsN] = useState<number>(18);
   const [flip, setFlip] = useState<number | null>(null);
@@ -74,13 +75,28 @@ export default function DeskPage() {
       const chosen = expiry || exs[0] || '';
       setExpiry(chosen);
       if (chosen) {
-        const cg = await apiGet(
-          `/api/desk/chain?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}&expiry=${encodeURIComponent(chosen)}`
-        );
+        const currency = instrument.startsWith('ETH') ? 'ETH' : 'BTC';
+
+        // 1) Chain (execution pricing) is per-expiry (D1/D2/manual)
+        const cg = await apiGet(`/api/desk/chain?currency=${currency}&expiry=${encodeURIComponent(chosen)}`);
         setFlip(cg.flip ?? null);
-        setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
-        setWallsN((cg.walls || []).length || 18);
         const chainRows = cg.chain || [];
+
+        // 2) Walls strength: ALL expiries (user requested)
+        try {
+          if (gexMode === 'ALL') {
+            const all = await apiGet(`/api/desk/walls?currency=${currency}&mode=all&strike_range_pct=${encodeURIComponent(String(Math.max(8, strikeRangePct)))}`);
+            setGexLevels((all.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
+            setWallsN((all.walls || []).length || 18);
+          } else {
+            setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
+            setWallsN((cg.walls || []).length || 18);
+          }
+        } catch {
+          // fallback to expiry walls
+          setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
+          setWallsN((cg.walls || []).length || 18);
+        }
 
         const ps = (cg.per_strike || []) as any[];
         if (ps && ps.length) {
@@ -150,7 +166,7 @@ export default function DeskPage() {
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-xl font-bold">Desk</h1>
+        <h1 className="text-xl font-bold">My Friend Cripto</h1>
         <div className="flex items-center gap-2 flex-wrap">
           <a className="text-sm text-slate-400 hover:text-slate-200" href="/news">News</a>
           <a className="text-sm text-slate-400 hover:text-slate-200" href="/report">Relatório</a>
@@ -200,6 +216,10 @@ export default function DeskPage() {
 
                       <label className="text-[11px] text-slate-300">GEX</label>
                       <input type="checkbox" checked={gexOn} onChange={(e) => setGexOn(e.target.checked)} />
+                      <select className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs" value={gexMode} onChange={(e)=>setGexMode(e.target.value as any)} title="ALL = força real (todos expiries); EXPIRY = só vencimento selecionado">
+                        <option value="ALL">ALL</option>
+                        <option value="EXPIRY">EXPIRY</option>
+                      </select>
                       <span className="text-[11px] text-slate-400">{gexLevels.length} walls</span>
 
                       <label className="text-[11px] text-slate-300">Expiry</label>
