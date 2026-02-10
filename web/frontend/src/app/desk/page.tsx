@@ -209,52 +209,74 @@ export default function DeskPage() {
               title: 'Chart',
               node: (
                 <div className="aspect-square relative">
-                  <div className="absolute left-2 top-2 z-10 bg-slate-950/60 backdrop-blur border border-slate-800 rounded-xl px-2 py-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <select className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs" value={instrument} onChange={(e) => setInstrument(e.target.value)}>
-                        <option>BTC-PERPETUAL</option>
-                        <option>ETH-PERPETUAL</option>
-                      </select>
-                      <select className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs" value={tf} onChange={(e) => setTf(e.target.value)}>
-                        <option value="1">1m</option>
-                        <option value="5">5m</option>
-                        <option value="15">15m</option>
-                        <option value="60">1h</option>
-                        <option value="240">4h</option>
-                        <option value="1D">1D</option>
-                      </select>
-                      <input className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs w-20" type="number" min={120} max={3000} value={candles} onChange={(e) => setCandles(parseInt(e.target.value || '900', 10))} />
-                      <button className="bg-blue-600 hover:bg-blue-500 rounded px-2 py-1 text-xs" onClick={refresh}>Sync</button>
-                    </div>
+                  <div className="absolute left-2 top-2 z-10 bg-slate-950/65 backdrop-blur border border-slate-800 rounded-2xl px-3 py-3 shadow-[0_0_0_1px_rgba(148,163,184,0.06)]">
+                    <div className="grid grid-cols-4 gap-2 items-center">
+                      <div className="col-span-2">
+                        <div className="text-[10px] text-slate-400">Instrument</div>
+                        <select className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" value={instrument} onChange={(e) => setInstrument(e.target.value)}>
+                          <option>BTC-PERPETUAL</option>
+                          <option>ETH-PERPETUAL</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400">TF</div>
+                        <select className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" value={tf} onChange={(e) => setTf(e.target.value)}>
+                          <option value="1">1m</option>
+                          <option value="5">5m</option>
+                          <option value="15">15m</option>
+                          <option value="60">1h</option>
+                          <option value="240">4h</option>
+                          <option value="1D">1D</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400">Candles</div>
+                        <input className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" type="number" min={120} max={3000} value={candles} onChange={(e) => setCandles(parseInt(e.target.value || '900', 10))} />
+                      </div>
 
-                    <div className="mt-2 flex items-center gap-2 flex-wrap">
-                      <label className="text-[11px] text-slate-300">Live</label>
-                      <input type="checkbox" checked={liveOn} onChange={(e) => setLiveOn(e.target.checked)} />
-                      <select className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs" value={liveSec} onChange={(e)=>setLiveSec(parseInt(e.target.value||'8',10))}>
-                        <option value={4}>4s</option>
-                        <option value={8}>8s</option>
-                        <option value={15}>15s</option>
-                      </select>
+                      <div>
+                        <div className="text-[10px] text-slate-400">Live</div>
+                        <div className="flex items-center gap-2">
+                          <input type="checkbox" checked={liveOn} onChange={(e) => setLiveOn(e.target.checked)} />
+                          <select className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" value={liveSec} onChange={(e) => setLiveSec(parseInt(e.target.value || '8', 10))}>
+                            <option value={4}>4s</option>
+                            <option value={8}>8s</option>
+                            <option value={15}>15s</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400">GEX</div>
+                        <div className="flex items-center gap-2">
+                          <input type="checkbox" checked={gexOn} onChange={(e) => setGexOn(e.target.checked)} />
+                          <select className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" value={gexMode} onChange={(e) => setGexMode(e.target.value as any)}>
+                            <option value="ALL">ALL</option>
+                            <option value="EXPIRY">EXPIRY</option>
+                          </select>
+                        </div>
+                        <div className="text-[10px] text-slate-500">{gexLevels.length} walls</div>
+                      </div>
+                      <div className="col-span-2">
+                        <div className="text-[10px] text-slate-400">Expiry</div>
+                        <select className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
+                          {expiries.map((e) => (
+                            <option key={e} value={e}>
+                              {e}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400">Range%</div>
+                        <input className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" type="number" min={1} max={30} step={1} value={strikeRangePct} onChange={(e) => setStrikeRangePct(parseFloat(e.target.value || '5'))} />
+                      </div>
 
-                      <label className="text-[11px] text-slate-300">GEX</label>
-                      <input type="checkbox" checked={gexOn} onChange={(e) => setGexOn(e.target.checked)} />
-                      <select className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs" value={gexMode} onChange={(e)=>setGexMode(e.target.value as any)} title="ALL = força real (todos expiries); EXPIRY = só vencimento selecionado">
-                        <option value="ALL">ALL</option>
-                        <option value="EXPIRY">EXPIRY</option>
-                      </select>
-                      <span className="text-[11px] text-slate-400">{gexLevels.length} walls</span>
-
-                      <label className="text-[11px] text-slate-300">Expiry</label>
-                      <select className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
-                        {expiries.map((e) => (
-                          <option key={e} value={e}>{e}</option>
-                        ))}
-                      </select>
-
-                      <label className="text-[11px] text-slate-300">Range%</label>
-                      <input className="bg-slate-900/60 border border-slate-700 rounded px-2 py-1 text-xs w-16" type="number" min={1} max={30} step={1} value={strikeRangePct} onChange={(e) => setStrikeRangePct(parseFloat(e.target.value || '5'))} />
-
-                      <span className="text-[11px] text-slate-400">Last: {last ?? '—'}</span>
+                      <div className="col-span-4 flex items-center justify-between pt-1">
+                        <div className="text-[11px] text-slate-400">Last: <span className="text-slate-200 font-semibold">{last ?? '—'}</span></div>
+                        <button className="bg-blue-600 hover:bg-blue-500 rounded-lg px-3 py-1 text-xs font-semibold" onClick={refresh}>
+                          Sync
+                        </button>
+                      </div>
                     </div>
                   </div>
 
