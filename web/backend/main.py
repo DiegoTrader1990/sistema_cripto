@@ -372,6 +372,54 @@ def api_news(cat: str = "ALL", q: str = "", limit: int = 60, user: dict = Depend
     return {"ok": True, "n": min(limit, len(items)), "items": items[:limit]}
 
 
+def _strip_html_to_text(html: str, max_chars: int = 12000) -> str:
+    import re
+    import html as html_mod
+
+    s = html or ""
+    # drop scripts/styles
+    s = re.sub(r"(?is)<script.*?>.*?</script>", " ", s)
+    s = re.sub(r"(?is)<style.*?>.*?</style>", " ", s)
+    # drop comments
+    s = re.sub(r"(?is)<!--.*?-->", " ", s)
+    # replace <br> and <p> with newlines
+    s = re.sub(r"(?i)<br\s*/?>", "\n", s)
+    s = re.sub(r"(?i)</p>", "\n", s)
+    # remove tags
+    s = re.sub(r"(?is)<[^>]+>", " ", s)
+    s = html_mod.unescape(s)
+    # collapse whitespace but keep newlines
+    s = re.sub(r"[\t\r ]+", " ", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    s = s.strip()
+    if len(s) > max_chars:
+        s = s[:max_chars] + "\n\n[truncado]"
+    return s
+
+
+@app.get("/api/news/open")
+def api_news_open(
+    url: str,
+    title: str = "",
+    assets: str = "",
+    score: int = 0,
+    user: dict = Depends(get_user),
+):
+    # Best-effort page fetch. Some sites block; in that case we return minimal info.
+    try:
+        r = requests.get(url, timeout=10, headers={"User-Agent": "cripto-desk-web/0.1"})
+        r.raise_for_status()
+        text = _strip_html_to_text(r.text)
+        excerpt = ""
+        try:
+            excerpt = " ".join(text.split()[:60]).strip()
+        except Exception:
+            excerpt = ""
+        return {"ok": True, "title": title or url, "url": url, "assets": assets, "score": int(score), "excerpt": excerpt, "text": text}
+    except Exception as e:
+        return {"ok": False, "title": title or url, "url": url, "assets": assets, "score": int(score), "excerpt": "", "text": "Não foi possível carregar a notícia automaticamente (site bloqueou ou timeout).\n\nAbra a fonte original."}
+
+
 @app.exception_handler(HTTPException)
 async def http_exc(_, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code, content={"ok": False, "error": exc.detail})
