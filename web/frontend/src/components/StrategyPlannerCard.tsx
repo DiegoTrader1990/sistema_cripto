@@ -166,15 +166,17 @@ export default function StrategyPlannerCard({
             <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-2">
               <div className="text-[11px] text-slate-400">Spot</div>
               <div className="text-sm font-semibold">{Number(spot).toFixed(0)}</div>
+              <div className="text-[11px] text-slate-500">Currency: {callName.startsWith('ETH') ? 'ETH' : 'BTC'}</div>
             </div>
             <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-2">
-              <div className="text-[11px] text-slate-400">Wall (K)</div>
+              <div className="text-[11px] text-slate-400">Strike (K) selecionado</div>
               <div className="text-sm font-semibold">{Number(selectedStrike).toFixed(0)}</div>
               <div className={`text-[11px] ${distPct >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{distPct >= 0 ? '+' : ''}{distPct.toFixed(2)}%</div>
             </div>
             <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-2">
               <div className="text-[11px] text-slate-400">Atualização</div>
               <div className="text-[11px] text-slate-300">{lastTs ? `${((Date.now() - lastTs) / 1000).toFixed(1)}s` : '—'}</div>
+              <div className="text-[11px] text-slate-500">Expiry: {expiry || '—'}</div>
               {qErr ? <div className="text-[11px] text-amber-300">{qErr}</div> : null}
             </div>
           </div>
