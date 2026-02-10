@@ -123,7 +123,12 @@ def fetch_rss_items(url: str, timeout: float = 8.0) -> list[dict]:
 
 # -------------------- Altcoins (Binance spot) --------------------
 BINANCE_BASE = "https://api.binance.com"
+BINANCE_BASE_FALLBACK = "https://data-api.binance.vision"  # sometimes api.binance.com is blocked
 BINANCE_TF = {"1": "1m", "5": "5m", "15": "15m", "60": "1h", "240": "4h", "1D": "1d"}
+
+BYBIT_BASE = "https://api.bybit.com"
+BYBIT_TF = {"1": "1", "5": "5", "15": "15", "60": "60", "240": "240", "1D": "D"}
+
 _BINANCE_SYMBOLS_CACHE: dict[str, Any] = {"ts": 0.0, "symbols": []}
 
 
@@ -134,10 +139,16 @@ def binance_usdt_symbols(force: bool = False) -> list[str]:
     except Exception:
         pass
 
-    url = BINANCE_BASE + "/api/v3/exchangeInfo"
-    r = requests.get(url, timeout=12)
-    r.raise_for_status()
-    data = r.json() or {}
+    def _fetch_exchangeinfo(base: str):
+        url = base + "/api/v3/exchangeInfo"
+        r = requests.get(url, timeout=12)
+        r.raise_for_status()
+        return r.json() or {}
+
+    try:
+        data = _fetch_exchangeinfo(BINANCE_BASE)
+    except Exception:
+        data = _fetch_exchangeinfo(BINANCE_BASE_FALLBACK)
     out: list[str] = []
     for s in (data.get("symbols") or []):
         try:
@@ -163,9 +174,17 @@ def binance_usdt_symbols(force: bool = False) -> list[str]:
 
 def binance_klines(symbol: str, tf: str, limit: int = 300) -> dict:
     interval = BINANCE_TF.get(tf, "1m")
-    url = BINANCE_BASE + "/api/v3/klines"
-    r = requests.get(url, params={"symbol": symbol, "interval": interval, "limit": limit}, timeout=10)
-    r.raise_for_status()
+
+    def _fetch(base: str):
+        url = base + "/api/v3/klines"
+        r = requests.get(url, params={"symbol": symbol, "interval": interval, "limit": limit}, timeout=10)
+        r.raise_for_status()
+        return r.json() or []
+
+    try:
+        rows = _fetch(BINANCE_BASE)
+    except Exception:
+        rows = _fetch(BINANCE_BASE_FALLBACK)
 
     t: list[float] = []
     o: list[float] = []
@@ -174,7 +193,7 @@ def binance_klines(symbol: str, tf: str, limit: int = 300) -> dict:
     c: list[float] = []
     v: list[float] = []
 
-    for k in (r.json() or []):
+    for k in (rows or []):
         ts = float(int(k[0]) // 1000)
         t.append(ts)
         o.append(float(k[1]))
@@ -472,14 +491,49 @@ def alt_symbols(force: int = 0, limit: int = 5000, user: dict = Depends(get_user
 
 
 @app.get("/api/alt/ohlc")
+def bybit_klines(symbol: str, tf: str, limit: int = 300) -> dict:
+    interval = BYBIT_TF.get(tf, "15")
+    url = BYBIT_BASE + "/v5/market/kline"
+    params = {"category": "spot", "symbol": symbol, "interval": interval, "limit": limit}
+    r = requests.get(url, params=params, timeout=10)
+    r.raise_for_status()
+    data = r.json() or {}
+    lst = ((data.get("result") or {}).get("list") or [])
+    # bybit returns newest->oldest
+    lst = list(reversed(lst))
+
+    t: list[float] = []
+    o: list[float] = []
+    h: list[float] = []
+    l: list[float] = []
+    c: list[float] = []
+    v: list[float] = []
+
+    for row in lst:
+        ts = float(int(row[0]) // 1000)
+        t.append(ts)
+        o.append(float(row[1]))
+        h.append(float(row[2]))
+        l.append(float(row[3]))
+        c.append(float(row[4]))
+        v.append(float(row[5]))
+
+    return {"t": t, "o": o, "h": h, "l": l, "c": c, "v": v}
+
+
 def alt_ohlc(symbol: str = "SOLUSDT", tf: str = "15", candles: int = 300, user: dict = Depends(get_user)):
+    candles = max(120, min(1500, int(candles)))
+    sym = (symbol or "SOLUSDT").upper().strip()
     try:
-        candles = max(120, min(1500, int(candles)))
-        sym = (symbol or "SOLUSDT").upper().strip()
         ohlc = binance_klines(symbol=sym, tf=tf, limit=candles)
-        return {"ok": True, "symbol": sym, "tf": tf, "candles": candles, "ohlc": ohlc}
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"alt_ohlc_failed: {e}")
+        return {"ok": True, "exchange": "binance", "symbol": sym, "tf": tf, "candles": candles, "ohlc": ohlc}
+    except Exception as e1:
+        # fallback to Bybit spot
+        try:
+            ohlc = bybit_klines(symbol=sym, tf=tf, limit=candles)
+            return {"ok": True, "exchange": "bybit", "symbol": sym, "tf": tf, "candles": candles, "ohlc": ohlc, "warning": f"binance_failed: {e1}"}
+        except Exception as e2:
+            raise HTTPException(status_code=502, detail=f"alt_ohlc_failed: binance={e1} | bybit={e2}")
 
 
 # -------------------- News API --------------------
