@@ -38,7 +38,7 @@ export default function DeskPage() {
   const [flip, setFlip] = useState<number | null>(null);
   const [selectedStrike, setSelectedStrike] = useState<number | null>(null);
   const [planTargetPct, setPlanTargetPct] = useState<number>(1.5);
-  const [chain, setChain] = useState<any[]>([]);
+  // chain state removed (unused)
   const [perStrike, setPerStrike] = useState<any[]>([]);
   const [strikeRangePct, setStrikeRangePct] = useState<number>(5);
 
@@ -75,7 +75,6 @@ export default function DeskPage() {
         setFlip(cg.flip ?? null);
         setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
         const chainRows = cg.chain || [];
-        setChain(chainRows);
 
         const ps = (cg.per_strike || []) as any[];
         if (ps && ps.length) {
