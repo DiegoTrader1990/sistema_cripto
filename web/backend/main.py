@@ -8,6 +8,8 @@ import os
 import time
 from typing import Any, Dict, List, Optional
 
+import requests
+
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
