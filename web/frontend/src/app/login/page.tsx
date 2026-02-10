@@ -7,8 +7,8 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
 export default function LoginPage() {
   const r = useRouter();
-  const [username, setUsername] = useState('Myfriend');
-  const [password, setPassword] = useState('Cripto');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
