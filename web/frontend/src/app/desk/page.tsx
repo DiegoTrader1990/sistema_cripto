@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
-
 import CandlesChart, { type Ohlc } from '@/components/CandlesChart';
 import PaperBoxCard from '@/components/PaperBoxCard';
+import GridDeskLayout from '@/components/GridDeskLayout';
+import './grid.css';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
 type OhlcWithVol = Ohlc & { v?: number[] };
 
@@ -188,74 +190,140 @@ export default function DeskPage() {
 
       {err ? <div className="mt-4 text-sm text-red-400">{err}</div> : null}
 
-      <div className="mt-6 grid grid-cols-12 gap-4">
-        <div className="col-span-12 lg:col-span-7 bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-slate-300 font-semibold">Chart</div>
-            <div className="text-xs text-slate-500">terminal view</div>
-          </div>
-          <div className="mt-3 aspect-square">
-            <CandlesChart
-              className="w-full h-full"
-              ohlc={ohlc}
-              levels={
-                gexOn
-                  ? [
-                      ...(flip ? [{ price: Number(flip), label: 'FLIP', color: 'rgba(34, 197, 94, 0.75)' }] : []),
-                      ...(selectedStrike ? [{ price: Number(selectedStrike), label: 'SEL', color: 'rgba(59, 130, 246, 0.90)' }] : []),
-                      ...gexLevels.map((x) => ({ price: Number(x.strike), label: 'WALL', color: 'rgba(168, 85, 247, 0.65)' })),
-                    ]
-                  : []
-              }
-              onPickPrice={(p) => {
-                if (!gexLevels.length) return;
-                let best = gexLevels[0];
-                let bestD = Math.abs(p - best.strike);
-                for (const lv of gexLevels) {
-                  const d = Math.abs(p - lv.strike);
-                  if (d < bestD) {
-                    best = lv;
-                    bestD = d;
-                  }
-                }
-                setSelectedStrike(best.strike);
-              }}
-            />
-          </div>
+      <div className="mt-6">
+        <GridDeskLayout
+          items={[
+            {
+              key: 'chart',
+              title: 'Chart',
+              node: (
+                <div className="aspect-square">
+                  <CandlesChart
+                    className="w-full h-full"
+                    ohlc={ohlc}
+                    levels={
+                      gexOn
+                        ? [
+                            ...(flip ? [{ price: Number(flip), label: 'FLIP', color: 'rgba(34, 197, 94, 0.75)' }] : []),
+                            ...(selectedStrike ? [{ price: Number(selectedStrike), label: 'SEL', color: 'rgba(59, 130, 246, 0.90)' }] : []),
+                            ...gexLevels.map((x) => ({ price: Number(x.strike), label: 'WALL', color: 'rgba(168, 85, 247, 0.65)' })),
+                          ]
+                        : []
+                    }
+                    onPickPrice={(p) => {
+                      if (!gexLevels.length) return;
+                      let best = gexLevels[0];
+                      let bestD = Math.abs(p - best.strike);
+                      for (const lv of gexLevels) {
+                        const d = Math.abs(p - lv.strike);
+                        if (d < bestD) {
+                          best = lv;
+                          bestD = d;
+                        }
+                      }
+                      setSelectedStrike(best.strike);
+                    }}
+                  />
+                </div>
+              ),
+            },
+            {
+              key: 'chain',
+              title: 'Chain (CALL | STRIKE | PUT)',
+              node: (
+                <>
+                  <div className="text-xs text-slate-500 mb-2">Rows: {strikeRows.length} (range ±{strikeRangePct}%)</div>
+                  <div className="overflow-auto max-h-[380px] border border-slate-800 rounded-xl">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-slate-950 border-b border-slate-800">
+                        <tr>
+                          <th className="text-left p-2">Call (bid/ask · IV · OI)</th>
+                          <th className="text-left p-2">Strike</th>
+                          <th className="text-left p-2">Put (bid/ask · IV · OI)</th>
+                          <th className="text-left p-2">NetGEX</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {strikeRows.map((r: any) => (
+                          <tr
+                            key={r.strike}
+                            className={`border-b border-slate-900 hover:bg-slate-900/40 cursor-pointer ${selectedStrike === r.strike ? 'bg-slate-900/50' : ''}`}
+                            onClick={() => setSelectedStrike(Number(r.strike))}
+                          >
+                            <td className="p-2 text-slate-200">{r.call?.bid_price ?? '—'} / {r.call?.ask_price ?? '—'} · {r.call?.mark_iv ?? '—'} · {r.call?.open_interest ?? '—'}</td>
+                            <td className="p-2 text-slate-100 font-semibold">{Number(r.strike).toFixed(0)}</td>
+                            <td className="p-2 text-slate-200">{r.put?.bid_price ?? '—'} / {r.put?.ask_price ?? '—'} · {r.put?.mark_iv ?? '—'} · {r.put?.open_interest ?? '—'}</td>
+                            <td className="p-2 text-slate-400">{Number(r.net_gex || 0).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ),
+            },
+            {
+              key: 'ops',
+              title: 'Operacional (Long Strangle)',
+              node: (
+                <div>
+                  <div className="text-xs text-slate-500">Clique no gráfico para selecionar o nível GEX mais próximo. Se o clique não funcionar, use a lista de níveis abaixo.</div>
+                  {optErr ? <div className="mt-2 text-xs text-amber-400">GEX/Chain: {optErr}</div> : null}
 
-          <div className="mt-4">
-            <div className="text-sm text-slate-300 font-semibold">Chain (CALL | STRIKE | PUT)</div>
-            <div className="text-xs text-slate-500 mt-1">Rows: {strikeRows.length} (range ±{strikeRangePct}%)</div>
-            <div className="mt-2 overflow-auto max-h-[320px] border border-slate-800 rounded-xl">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-slate-950 border-b border-slate-800">
-                  <tr>
-                    <th className="text-left p-2">Call (bid/ask · IV · OI)</th>
-                    <th className="text-left p-2">Strike</th>
-                    <th className="text-left p-2">Put (bid/ask · IV · OI)</th>
-                    <th className="text-left p-2">NetGEX</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {strikeRows.map((r: any) => (
-                    <tr
-                      key={r.strike}
-                      className={`border-b border-slate-900 hover:bg-slate-900/40 cursor-pointer ${selectedStrike === r.strike ? 'bg-slate-900/50' : ''}`}
-                      onClick={() => setSelectedStrike(Number(r.strike))}
-                    >
-                      <td className="p-2 text-slate-200">{r.call?.bid_price ?? '—'} / {r.call?.ask_price ?? '—'} · {r.call?.mark_iv ?? '—'} · {r.call?.open_interest ?? '—'}</td>
-                      <td className="p-2 text-slate-100 font-semibold">{Number(r.strike).toFixed(0)}</td>
-                      <td className="p-2 text-slate-200">{r.put?.bid_price ?? '—'} / {r.put?.ask_price ?? '—'} · {r.put?.mark_iv ?? '—'} · {r.put?.open_interest ?? '—'}</td>
-                      <td className="p-2 text-slate-400">{Number(r.net_gex || 0).toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+                  <div className="mt-3">
+                    <div className="text-xs text-slate-400">Níveis (walls):</div>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {(gexLevels || []).slice(0, 10).map((lv) => (
+                        <button
+                          key={lv.strike}
+                          className="text-xs bg-slate-950/40 border border-slate-800 rounded px-2 py-1 hover:border-slate-600"
+                          onClick={() => setSelectedStrike(Number(lv.strike))}
+                        >
+                          {Number(lv.strike).toFixed(0)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-        <div className="col-span-12 lg:col-span-5 space-y-4">
+                  <div className="mt-3 text-sm">
+                    <div><span className="text-slate-400">Flip:</span> {flip ?? '—'}</div>
+                    <div><span className="text-slate-400">Strike selecionado:</span> {selectedStrike ?? '—'}</div>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    <label className="text-xs text-slate-400">Alvo (%)</label>
+                    <input className="bg-slate-900 border border-slate-800 rounded px-2 py-1 w-24" type="number" step="0.1" value={planTargetPct} onChange={(e)=>setPlanTargetPct(parseFloat(e.target.value||'1.5'))} />
+                  </div>
+
+                  <div className="mt-3 text-xs text-slate-300 bg-slate-950/40 border border-slate-800 rounded p-3">
+                    {selectedStrike ? (
+                      <>
+                        <div className="font-semibold">Plano:</div>
+                        <div>Comprar CALL + PUT no strike {selectedStrike} (expiry {expiry}).</div>
+                        <div>Objetivo: capturar ~±{planTargetPct}% de variação do spot.</div>
+                      </>
+                    ) : (
+                      <div>Selecione um nível (ligue GEX e clique no gráfico).</div>
+                    )}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: 'paper',
+              title: 'Caixa / Simulador',
+              node: <PaperBoxCard selected={selectedStrike ? { strike: Number(selectedStrike), ...(selected || {}) } : null} expiry={expiry} spot={Number(last || 0)} targetPct={planTargetPct} />,
+            },
+            {
+              key: 'news',
+              title: 'News',
+              node: <div className="text-xs text-slate-500">Abra a aba News para ler dentro do sistema.</div>,
+            },
+          ]}
+        />
+      </div>
+
+      <div className="mt-6">
           <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
             <div className="text-sm font-semibold">Operacional (Long Strangle)</div>
             <div className="text-xs text-slate-500 mt-1">Clique no gráfico para selecionar o nível GEX mais próximo. Se o clique não funcionar, use a lista de níveis abaixo.</div>

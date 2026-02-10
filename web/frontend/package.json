@@ -12,7 +12,9 @@
     "next": "^15.2.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "lightweight-charts": "^4.2.0"
+    "lightweight-charts": "^4.2.0",
+    "react-grid-layout": "^1.4.4",
+    "react-resizable": "^3.0.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

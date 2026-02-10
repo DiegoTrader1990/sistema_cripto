@@ -1,0 +1,9 @@
+/* Minimal react-grid-layout styles */
+.react-grid-layout { position: relative; transition: height 200ms ease; }
+.react-grid-item { transition: all 200ms ease; transition-property: left, top; }
+.react-grid-item.cssTransforms { transition-property: transform; }
+.react-grid-item.resizing { z-index: 3; }
+.react-grid-item.react-draggable-dragging { z-index: 3; }
+.react-grid-item.react-grid-placeholder { background: rgba(148,163,184,0.15); border: 1px dashed rgba(148,163,184,0.35); }
+.react-grid-item > .react-resizable-handle { position: absolute; width: 16px; height: 16px; bottom: 2px; right: 2px; cursor: se-resize; opacity: 0.55; }
+.react-grid-item > .react-resizable-handle::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 10px; height: 10px; border-right: 2px solid rgba(148,163,184,0.35); border-bottom: 2px solid rgba(148,163,184,0.35); }
