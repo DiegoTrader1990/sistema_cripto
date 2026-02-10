@@ -68,8 +68,24 @@ export default function DeskPage() {
         const cg = await apiGet(`/api/desk/chain?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}&expiry=${encodeURIComponent(chosen)}`);
         setFlip(cg.flip ?? null);
         setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
-        setChain(cg.chain || []);
-        setPerStrike(cg.per_strike || []);
+        const chainRows = cg.chain || [];
+        setChain(chainRows);
+
+        // backend may not have per_strike yet (deploy lag); fallback: build from chain
+        const ps = (cg.per_strike || []) as any[];
+        if (ps && ps.length) {
+          setPerStrike(ps);
+        } else {
+          const m = new Map<number, any>();
+          for (const row of chainRows) {
+            const k = Number(row.strike);
+            if (!m.has(k)) m.set(k, { strike: k, call: null, put: null, net_gex: 0, call_gex: 0, put_gex: 0 });
+            const it = m.get(k);
+            if (row.option_type === 'call') it.call = row;
+            if (row.option_type === 'put') it.put = row;
+          }
+          setPerStrike(Array.from(m.values()).sort((a, b) => a.strike - b.strike));
+        }
       }
     } catch (e: any) {
       setOptErr(String(e?.message || e));
@@ -195,6 +211,7 @@ export default function DeskPage() {
 
           <div className="mt-4">
             <div className="text-sm text-slate-300 font-semibold">Chain (CALL | STRIKE | PUT)</div>
+            <div className="text-xs text-slate-500 mt-1">Rows: {strikeRows.length} (range ±{strikeRangePct}%)</div>
             <div className="mt-2 overflow-auto max-h-[320px] border border-slate-800 rounded-xl">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-slate-950 border-b border-slate-800">
