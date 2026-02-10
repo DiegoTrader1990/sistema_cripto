@@ -87,6 +87,7 @@ export default function PaperBoxCard({
 
   const [mtm, setMtm] = useState<Record<string, { ts: number; valueUsd: number; pnlUsd: number }>>({});
   const [mtmErr, setMtmErr] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -115,6 +116,11 @@ export default function PaperBoxCard({
 
   const openTrades = useMemo(() => trades.filter((t) => !t.closedTs), [trades]);
   const closedTrades = useMemo(() => trades.filter((t) => t.closedTs), [trades]);
+
+  const activeTrade = useMemo(() => {
+    if (!activeId) return null;
+    return trades.find((t) => t.id === activeId) || null;
+  }, [activeId, trades]);
 
   const pnl = useMemo(() => {
     const p = closedTrades.reduce((a, t) => a + Number(t.pnlUsd || 0), 0);
@@ -149,6 +155,7 @@ export default function PaperBoxCard({
       totalCostUsd: total,
     };
     setTrades([t, ...trades]);
+    setActiveId(t.id);
   }
 
   function calcPnlAtSpot(t: PaperTrade, sp: number) {
@@ -360,9 +367,19 @@ export default function PaperBoxCard({
             disabled={!selected?.call || !selected?.put}
             onClick={simulateEntry}
           >
-            Simular Entrada
+            Entrar (paper)
           </button>
-          <div className="mt-2 text-[11px] text-slate-500">Seleciona um strike (wall) antes.</div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <button
+              className="w-full rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 disabled:opacity-60 px-3 py-2 text-xs font-semibold"
+              disabled={!activeTrade || !!activeTrade?.closedTs}
+              onClick={() => activeTrade && closeTrade(activeTrade.id, Number(spot || 0))}
+              title="Fechar a operação selecionada usando o spot atual"
+            >
+              Fechar posição
+            </button>
+          </div>
+          <div className="mt-2 text-[11px] text-slate-500">Clique em uma entrada ativa abaixo para selecionar.</div>
         </div>
       </div>
 
@@ -371,7 +388,12 @@ export default function PaperBoxCard({
 
         <div className="mt-2 space-y-2 max-h-[240px] overflow-auto">
           {openWithMtM.map(({ t, pnlUsd, valueUsd, beLow, beHigh }) => (
-            <div key={t.id} className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
+            <button
+              key={t.id}
+              className={`w-full text-left bg-slate-950/40 border rounded-xl p-3 hover:border-slate-600 ${activeId === t.id ? 'border-blue-500/70' : 'border-slate-800'}`}
+              onClick={() => setActiveId(t.id)}
+              title="Selecionar esta operação"
+            >
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <div className="text-xs font-semibold">STRADDLE {t.strike} · {t.expiry}</div>
@@ -411,7 +433,7 @@ export default function PaperBoxCard({
                   <div className="text-[11px] text-slate-500">valor: {valueUsd == null ? '—' : `$${valueUsd.toFixed(2)}`}</div>
                 </div>
               </div>
-            </div>
+            </button>
           ))}
 
           {!openWithMtM.length ? (

@@ -34,8 +34,9 @@ export default function DeskPage() {
   // options/gex
   const [expiry, setExpiry] = useState<string>('');
   const [expiries, setExpiries] = useState<string[]>([]);
-  const [gexOn, setGexOn] = useState<boolean>(false);
+  const [gexOn, setGexOn] = useState<boolean>(true);
   const [gexLevels, setGexLevels] = useState<{ strike: number; gex: number }[]>([]);
+  const [wallsN, setWallsN] = useState<number>(18);
   const [flip, setFlip] = useState<number | null>(null);
   const [selectedStrike, setSelectedStrike] = useState<number | null>(null);
   const [planTargetPct, setPlanTargetPct] = useState<number>(1.5);
@@ -75,6 +76,7 @@ export default function DeskPage() {
         );
         setFlip(cg.flip ?? null);
         setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
+        setWallsN((cg.walls || []).length || 18);
         const chainRows = cg.chain || [];
 
         const ps = (cg.per_strike || []) as any[];
@@ -126,6 +128,12 @@ export default function DeskPage() {
     return byStrike.get(Number(selectedStrike)) || null;
   }, [byStrike, selectedStrike]);
 
+  const maxAbsWall = useMemo(() => {
+    let m = 0;
+    for (const w of gexLevels || []) m = Math.max(m, Math.abs(Number(w.gex || 0)));
+    return m || 1;
+  }, [gexLevels]);
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="flex items-center gap-3 flex-wrap">
@@ -170,7 +178,7 @@ export default function DeskPage() {
 
         <label className="text-sm text-slate-300">GEX</label>
         <input type="checkbox" checked={gexOn} onChange={(e) => setGexOn(e.target.checked)} />
-        <div className="text-xs text-slate-500">levels: {gexLevels.length}</div>
+        <div className="text-xs text-slate-500">walls: {gexLevels.length}</div>
 
         <label className="text-sm text-slate-300">Expiry</label>
         <select className="bg-slate-900 border border-slate-800 rounded px-2 py-1" value={expiry} onChange={(e) => setExpiry(e.target.value)}>
@@ -215,13 +223,20 @@ export default function DeskPage() {
                             ...(selectedStrike
                               ? [{ price: Number(selectedStrike), label: 'SEL', color: 'rgba(59, 130, 246, 0.90)' }]
                               : []),
-                            ...gexLevels.map((x) => {
-                              const s = Number(x.strike);
-                              const sp = Number(last || 0);
-                              const d = sp ? ((s / sp - 1) * 100) : 0;
-                              const tag = sp ? `${d >= 0 ? '+' : ''}${d.toFixed(2)}%` : '';
-                              return { price: s, label: `WALL ${tag}`.trim(), color: 'rgba(168, 85, 247, 0.65)' };
-                            }),
+                            ...[...gexLevels]
+                              .sort((a, b) => Math.abs(Number(b.gex || 0)) - Math.abs(Number(a.gex || 0)))
+                              .slice(0, wallsN || 18)
+                              .map((x, idx) => {
+                                const s = Number(x.strike);
+                                const sp = Number(last || 0);
+                                const d = sp ? ((s / sp - 1) * 100) : 0;
+                                const tag = sp ? `${d >= 0 ? '+' : ''}${d.toFixed(2)}%` : '';
+                                const g = Number(x.gex || 0);
+                                const strength = Math.min(1, Math.abs(g) / maxAbsWall);
+                                const alpha = 0.35 + 0.55 * strength;
+                                const gShort = Math.abs(g) >= 1e6 ? `${(g / 1e6).toFixed(1)}M` : Math.abs(g) >= 1e3 ? `${(g / 1e3).toFixed(1)}k` : g.toFixed(0);
+                                return { price: s, label: `#${idx + 1} ${tag} ${gShort}`.trim(), color: `rgba(168, 85, 247, ${alpha.toFixed(2)})` };
+                              }),
                           ]
                         : []
                     }
@@ -292,15 +307,33 @@ export default function DeskPage() {
                   <div className="mt-3">
                     <div className="text-xs text-slate-400">Níveis (walls):</div>
                     <div className="mt-2 grid grid-cols-2 gap-2">
-                      {(gexLevels || []).slice(0, 10).map((lv) => (
-                        <button
-                          key={lv.strike}
-                          className="text-xs bg-slate-950/40 border border-slate-800 rounded px-2 py-1 hover:border-slate-600"
-                          onClick={() => setSelectedStrike(Number(lv.strike))}
-                        >
-                          {Number(lv.strike).toFixed(0)}
-                        </button>
-                      ))}
+                      {[...gexLevels]
+                        .sort((a, b) => Math.abs(Number(b.gex || 0)) - Math.abs(Number(a.gex || 0)))
+                        .slice(0, 10)
+                        .map((lv, idx) => {
+                          const sp = Number(last || 0);
+                          const s = Number(lv.strike);
+                          const d = sp ? ((s / sp - 1) * 100) : 0;
+                          const g = Number(lv.gex || 0);
+                          const gShort = Math.abs(g) >= 1e6 ? `${(g / 1e6).toFixed(1)}M` : Math.abs(g) >= 1e3 ? `${(g / 1e3).toFixed(1)}k` : g.toFixed(0);
+                          return (
+                            <button
+                              key={lv.strike}
+                              className={`text-xs bg-slate-950/40 border border-slate-800 rounded px-2 py-1 hover:border-slate-600 ${selectedStrike === s ? 'border-blue-500/60' : ''}`}
+                              onClick={() => setSelectedStrike(s)}
+                              title={`rank #${idx + 1} |gex|=${Math.abs(g).toFixed(2)} dist=${d.toFixed(2)}%`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold">#{idx + 1}</span>
+                                <span className="text-slate-300">{s.toFixed(0)}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                <span>{d >= 0 ? '+' : ''}{d.toFixed(2)}%</span>
+                                <span>{gShort}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
                     </div>
                   </div>
 
