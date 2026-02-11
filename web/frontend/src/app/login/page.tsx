@@ -52,35 +52,36 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold">My Friend - Cripto</h1>
           <p className="text-sm text-slate-400 mt-1">Login</p>
 
-        <form className="mt-6 space-y-4" onSubmit={submit}>
-          <div>
-            <label className="text-sm text-slate-300">User</label>
-            <input
-              className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-sm text-slate-300">Senha</label>
-            <input
-              type="password"
-              className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
+          <form className="mt-6 space-y-4" onSubmit={submit}>
+            <div>
+              <label className="text-sm text-slate-300">User</label>
+              <input
+                className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-sm text-slate-300">Senha</label>
+              <input
+                type="password"
+                className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
 
-          {err ? <div className="text-sm text-red-400">{err}</div> : null}
+            {err ? <div className="text-sm text-red-400">{err}</div> : null}
 
-          <button
-            disabled={loading}
-            className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 p-2 font-semibold"
-            type="submit"
-          >
-            {loading ? 'Entrando…' : 'Entrar'}
-          </button>
-        </form>
+            <button
+              disabled={loading}
+              className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 p-2 font-semibold"
+              type="submit"
+            >
+              {loading ? 'Entrando…' : 'Entrar'}
+            </button>
+          </form>
+        </div>
       </div>
     </main>
   );
