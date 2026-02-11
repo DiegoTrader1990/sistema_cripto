@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import GridDeskLayout from '@/components/GridDeskLayout';
 
 export default function ResponsiveDeskLayout({
@@ -15,11 +16,11 @@ export default function ResponsiveDeskLayout({
   view: 'DESKTOP' | 'TABLET' | 'MOBILE';
   mobileTab: 'CHART' | 'CHAIN' | 'PLANNER' | 'PAPER' | 'OPS';
   setMobileTab: (t: 'CHART' | 'CHAIN' | 'PLANNER' | 'PAPER' | 'OPS') => void;
-  chart: React.ReactNode;
-  chain: React.ReactNode;
-  ops: React.ReactNode;
-  paper: React.ReactNode;
-  planner: React.ReactNode;
+  chart: ReactNode;
+  chain: ReactNode;
+  ops: ReactNode;
+  paper: ReactNode;
+  planner: ReactNode;
 }) {
   if (view === 'MOBILE') {
     const tabs: Array<[typeof mobileTab, string]> = [
@@ -30,7 +31,7 @@ export default function ResponsiveDeskLayout({
       ['OPS', 'Ops'],
     ];
 
-    const Card = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    const Card = ({ title, children }: { title: string; children: ReactNode }) => (
       <div className="mt-4 bg-slate-900/40 border border-slate-800 rounded-2xl overflow-hidden">
         <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
           <div className="text-xs font-semibold">{title}</div>
