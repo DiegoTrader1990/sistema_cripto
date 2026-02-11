@@ -39,11 +39,18 @@ export default function DeskPage() {
   const [bootMsg, setBootMsg] = useState<string>('Carregando…');
   const [bootPct, setBootPct] = useState<number>(10);
 
+  // responsive
+  const [view, setView] = useState<'DESKTOP' | 'TABLET' | 'MOBILE'>('DESKTOP');
+  const [mobileTab, setMobileTab] = useState<'CHART' | 'CHAIN' | 'PLANNER' | 'PAPER' | 'OPS'>('CHART');
+
   // options/gex
   const [expiry, setExpiry] = useState<string>('');
   const [expiries, setExpiries] = useState<string[]>([]);
   const [gexOn, setGexOn] = useState<boolean>(true);
   const [gexMode, setGexMode] = useState<'ALL' | 'EXPIRY'>('ALL');
+  const [gexN, setGexN] = useState<number>(24); // number of expiries aggregated when mode=ALL
+  const [gexMinDte, setGexMinDte] = useState<number>(0);
+  const [gexMaxDte, setGexMaxDte] = useState<number>(9999);
   const [gexLevels, setGexLevels] = useState<{ strike: number; gex: number }[]>([]);
   const [wallsN, setWallsN] = useState<number>(18);
   const [flip, setFlip] = useState<number | null>(null);
@@ -108,7 +115,7 @@ export default function DeskPage() {
               setBootMsg('Carregando walls (GEX ALL)…');
               setBootPct(85);
             }
-            const all = await apiGet(`/api/desk/walls?currency=${currency}&mode=all&strike_range_pct=${encodeURIComponent(String(Math.max(8, strikeRangePct)))}`);
+            const all = await apiGet(`/api/desk/walls?currency=${currency}&mode=all&strike_range_pct=${encodeURIComponent(String(Math.max(8, strikeRangePct)))}&max_expiries=${encodeURIComponent(String(gexN || 0))}&min_dte_days=${encodeURIComponent(String(gexMinDte || 0))}&max_dte_days=${encodeURIComponent(String(gexMaxDte || 9999))}`);
             setGexLevels((all.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
             setWallsN((all.walls || []).length || 18);
           } else {
@@ -154,6 +161,18 @@ export default function DeskPage() {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instrument, tf, candles]);
+
+  useEffect(() => {
+    const calc = () => {
+      const w = window.innerWidth || 1200;
+      if (w < 640) return setView('MOBILE');
+      if (w < 1024) return setView('TABLET');
+      return setView('DESKTOP');
+    };
+    calc();
+    window.addEventListener('resize', calc);
+    return () => window.removeEventListener('resize', calc);
+  }, []);
 
   useEffect(() => {
     if (!liveOn) return;
@@ -306,7 +325,38 @@ export default function DeskPage() {
                                 <option value="EXPIRY">EXPIRY</option>
                               </select>
                             </div>
-                            <div className="text-[10px] text-slate-500">{gexLevels.length} walls</div>
+
+                            {gexMode === 'ALL' ? (
+                              <div className="mt-2 grid grid-cols-2 gap-2">
+                                <div>
+                                  <div className="text-[10px] text-slate-400">Expiries</div>
+                                  <select className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" value={gexN} onChange={(e)=>setGexN(parseInt(e.target.value||'24',10))}>
+                                    <option value={1}>1</option>
+                                    <option value={2}>2</option>
+                                    <option value={3}>3</option>
+                                    <option value={5}>5</option>
+                                    <option value={10}>10</option>
+                                    <option value={24}>24</option>
+                                    <option value={0}>ALL</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] text-slate-400">DTE min</div>
+                                  <input className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" type="number" min={0} step={1} value={gexMinDte} onChange={(e)=>setGexMinDte(parseInt(e.target.value||'0',10))} />
+                                </div>
+                                <div>
+                                  <div className="text-[10px] text-slate-400">DTE max</div>
+                                  <input className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" type="number" min={1} step={1} value={gexMaxDte} onChange={(e)=>setGexMaxDte(parseInt(e.target.value||'9999',10))} />
+                                </div>
+                                <div className="flex items-end">
+                                  <button className="w-full bg-blue-600 hover:bg-blue-500 rounded-lg px-2 py-1 text-xs font-semibold" onClick={refresh}>
+                                    Aplicar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div className="text-[10px] text-slate-500 mt-1">{gexLevels.length} walls</div>
                           </div>
                           <div className="col-span-2">
                             <div className="text-[10px] text-slate-400">Expiry</div>

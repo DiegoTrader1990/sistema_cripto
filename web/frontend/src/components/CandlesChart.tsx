@@ -100,6 +100,16 @@ export default function CandlesChart({
     const { width, height } = el.getBoundingClientRect();
     chart.applyOptions({ width: Math.floor(width), height: Math.floor(height) });
 
+    // Some layouts (grid/resize) finalize after paint; apply size again to avoid "stuck" interactions.
+    setTimeout(() => {
+      try {
+        const { width: w2, height: h2 } = el.getBoundingClientRect();
+        chart.applyOptions({ width: Math.floor(w2), height: Math.floor(h2) });
+      } catch {
+        // ignore
+      }
+    }, 120);
+
     return () => ro.disconnect();
   }, []);
 
