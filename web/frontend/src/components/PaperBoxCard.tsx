@@ -98,6 +98,14 @@ export default function PaperBoxCard({
   const [botAuto, setBotAuto] = useState<boolean>(false);
   const [botMaxPos, setBotMaxPos] = useState<number>(3);
   const [botMaxRisk, setBotMaxRisk] = useState<number>(500);
+  const [botExpiriesAvail, setBotExpiriesAvail] = useState<string[]>([]);
+  const [botExpSel, setBotExpSel] = useState<string[]>([]);
+  const [botStrikeRangePct, setBotStrikeRangePct] = useState<number>(8);
+  const [botWallsN, setBotWallsN] = useState<number>(18);
+  const [botTpMovePct, setBotTpMovePct] = useState<number>(1.5);
+  const [botSlPnlPct, setBotSlPnlPct] = useState<number>(-60);
+  const [botQtyFixed, setBotQtyFixed] = useState<number>(0);
+  const [botSpotSrc, setBotSpotSrc] = useState<'index' | 'last'>('index');
 
   const [mtm, setMtm] = useState<Record<string, { ts: number; valueUsd: number; pnlUsd: number; callT?: any; putT?: any; spot?: number }>>({});
   const [mtmErr, setMtmErr] = useState<string | null>(null);
@@ -301,12 +309,19 @@ export default function PaperBoxCard({
     setBotAuto(Boolean(data?.bot?.auto_entry));
   }
 
-  async function botSaveLimits() {
+  async function botSaveConfig() {
     const tok = localStorage.getItem('token') || '';
     const res = await fetch(`${API_BASE}/api/bot/config`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        expiries: botExpSel,
+        strike_range_pct: botStrikeRangePct,
+        walls_n: botWallsN,
+        tp_move_pct: botTpMovePct,
+        sl_pnl_pct: botSlPnlPct,
+        qty: botQtyFixed,
+        spot_src: botSpotSrc,
         max_positions: botMaxPos,
         max_risk_usd: botMaxRisk,
       }),
@@ -315,6 +330,27 @@ export default function PaperBoxCard({
     if (!res.ok) throw new Error(data?.error || 'bot config failed');
     setBotStatus(data.bot || null);
   }
+
+  // Fetch available expiries for manual bot config
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const cur = (botStatus?.currency || 'BTC') as string;
+        const ex = await apiGet(`/api/desk/expiries?currency=${encodeURIComponent(String(cur || 'BTC'))}`);
+        if (!alive) return;
+        const exs = (ex.expiries || []) as string[];
+        setBotExpiriesAvail(exs);
+        if (!botExpSel.length && exs.length) setBotExpSel(exs.slice(0, 2));
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [botStatus?.currency]);
 
   async function closeServerTrade(id: string, reason: string = 'manual') {
     const tok = localStorage.getItem('token') || '';
@@ -423,6 +459,14 @@ export default function PaperBoxCard({
         setBotAuto(Boolean(bs?.bot?.auto_entry));
         if (typeof bs?.bot?.max_positions === 'number') setBotMaxPos(Number(bs.bot.max_positions));
         if (typeof bs?.bot?.max_risk_usd === 'number') setBotMaxRisk(Number(bs.bot.max_risk_usd));
+        if (Array.isArray(bs?.bot?.expiries)) setBotExpSel(bs.bot.expiries);
+        if (typeof bs?.bot?.strike_range_pct === 'number') setBotStrikeRangePct(Number(bs.bot.strike_range_pct));
+        if (typeof bs?.bot?.walls_n === 'number') setBotWallsN(Number(bs.bot.walls_n));
+        if (typeof bs?.bot?.tp_move_pct === 'number') setBotTpMovePct(Number(bs.bot.tp_move_pct));
+        if (typeof bs?.bot?.sl_pnl_pct === 'number') setBotSlPnlPct(Number(bs.bot.sl_pnl_pct));
+        if (typeof bs?.bot?.qty === 'number') setBotQtyFixed(Number(bs.bot.qty));
+        if (String(bs?.bot?.spot_src) === 'last') setBotSpotSrc('last');
+        else setBotSpotSrc('index');
       } catch (e: any) {
         if (!alive) return;
         setServerErr(String(e?.message || e));
@@ -768,11 +812,87 @@ export default function PaperBoxCard({
                 <input className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2" type="number" min={50} step={50} value={botMaxRisk} onChange={(e) => setBotMaxRisk(Number(e.target.value || 500))} />
               </div>
             </div>
-            <button className="mt-2 w-full rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 px-3 py-2 text-xs font-semibold" onClick={botSaveLimits} type="button">
-              Salvar limites
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="col-span-2">
+                <div className="text-[10px] text-slate-400">Expiries (checkbox)</div>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  <button
+                    className="text-[11px] bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1 hover:border-slate-600"
+                    type="button"
+                    onClick={() => setBotExpSel(botExpiriesAvail.slice(0, 2))}
+                  >
+                    D1/D2
+                  </button>
+                  <button
+                    className="text-[11px] bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1 hover:border-slate-600"
+                    type="button"
+                    onClick={() => setBotExpSel([])}
+                    title="Limpar seleção"
+                  >
+                    Limpar
+                  </button>
+                  <div className="text-[10px] text-slate-500 self-center">Sel: <span className="text-slate-200 font-semibold">{botExpSel.length || 0}</span></div>
+                </div>
+                <div className="mt-2 max-h-[120px] overflow-auto border border-slate-800 rounded-xl p-2 bg-slate-950/20">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                    {(botExpiriesAvail || []).slice(0, 30).map((e) => {
+                      const on = botExpSel.includes(e);
+                      return (
+                        <label key={e} className="flex items-center gap-2 text-[11px] text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={(ev) => {
+                              const ck = ev.target.checked;
+                              if (ck) setBotExpSel(Array.from(new Set([...botExpSel, e])));
+                              else setBotExpSel(botExpSel.filter((x) => x !== e));
+                            }}
+                          />
+                          {e}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[10px] text-slate-400">Strike range %</div>
+                <input className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2" type="number" min={1} max={30} step={1} value={botStrikeRangePct} onChange={(e) => setBotStrikeRangePct(Number(e.target.value || 8))} />
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400">Walls N</div>
+                <input className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2" type="number" min={6} max={30} step={1} value={botWallsN} onChange={(e) => setBotWallsN(Number(e.target.value || 18))} />
+              </div>
+
+              <div>
+                <div className="text-[10px] text-slate-400">TP move %</div>
+                <input className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2" type="number" min={0.5} max={10} step={0.1} value={botTpMovePct} onChange={(e) => setBotTpMovePct(Number(e.target.value || 1.5))} />
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400">SL pnl %</div>
+                <input className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2" type="number" min={-95} max={-1} step={1} value={botSlPnlPct} onChange={(e) => setBotSlPnlPct(Number(e.target.value || -60))} />
+              </div>
+
+              <div>
+                <div className="text-[10px] text-slate-400">Qty (0=auto)</div>
+                <input className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2" type="number" min={0} step={0.1} value={botQtyFixed} onChange={(e) => setBotQtyFixed(Number(e.target.value || 0))} />
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400">Spot src</div>
+                <select className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2" value={botSpotSrc} onChange={(e) => setBotSpotSrc((e.target.value as any) || 'index')}>
+                  <option value="index">index</option>
+                  <option value="last">last</option>
+                </select>
+              </div>
+            </div>
+
+            <button className="mt-2 w-full rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 px-3 py-2 text-xs font-semibold" onClick={botSaveConfig} type="button">
+              Salvar config do BOT
             </button>
+
             <div className="mt-2 text-[11px] text-slate-500">
-              Expiries: {(botStatus?.expiries || []).length ? (botStatus.expiries || []).join(', ') : '—'}
+              Expiries (ativo): {(botStatus?.expiries || []).length ? (botStatus.expiries || []).join(', ') : '—'}
             </div>
           </div>
 
