@@ -51,6 +51,13 @@ export default function DeskPage() {
   const [gexN, setGexN] = useState<number>(24); // number of expiries aggregated when mode=ALL
   const [gexMinDte, setGexMinDte] = useState<number>(0);
   const [gexMaxDte, setGexMaxDte] = useState<number>(9999);
+  const [gexRanges, setGexRanges] = useState<{ key: string; label: string; a: number; b: number; on: boolean }[]>([
+    { key: 'd1', label: '1DTE', a: 1, b: 1, on: true },
+    { key: 'd2', label: '2DTE', a: 2, b: 2, on: true },
+    { key: 'd3_5', label: '3–5', a: 3, b: 5, on: false },
+    { key: 'd6_10', label: '6–10', a: 6, b: 10, on: false },
+    { key: 'd11_30', label: '11–30', a: 11, b: 30, on: false },
+  ]);
   const [gexLevels, setGexLevels] = useState<{ strike: number; gex: number }[]>([]);
   const [wallsN, setWallsN] = useState<number>(18);
   const [flip, setFlip] = useState<number | null>(null);
@@ -115,7 +122,8 @@ export default function DeskPage() {
               setBootMsg('Carregando walls (GEX ALL)…');
               setBootPct(85);
             }
-            const all = await apiGet(`/api/desk/walls?currency=${currency}&mode=all&strike_range_pct=${encodeURIComponent(String(Math.max(8, strikeRangePct)))}&max_expiries=${encodeURIComponent(String(gexN || 0))}&min_dte_days=${encodeURIComponent(String(gexMinDte || 0))}&max_dte_days=${encodeURIComponent(String(gexMaxDte || 9999))}`);
+            const ranges = (gexRanges || []).filter((r) => r.on).map((r) => `${r.a}-${r.b}`).join(',');
+            const all = await apiGet(`/api/desk/walls?currency=${currency}&mode=all&strike_range_pct=${encodeURIComponent(String(Math.max(8, strikeRangePct)))}&max_expiries=${encodeURIComponent(String(gexN || 0))}&min_dte_days=${encodeURIComponent(String(gexMinDte || 0))}&max_dte_days=${encodeURIComponent(String(gexMaxDte || 9999))}&dte_ranges=${encodeURIComponent(ranges)}`);
             setGexLevels((all.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
             setWallsN((all.walls || []).length || 18);
           } else {
@@ -341,16 +349,42 @@ export default function DeskPage() {
                                   </select>
                                 </div>
                                 <div>
-                                  <div className="text-[10px] text-slate-400">DTE min</div>
-                                  <input className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" type="number" min={0} step={1} value={gexMinDte} onChange={(e)=>setGexMinDte(parseInt(e.target.value||'0',10))} />
+                                  <div className="text-[10px] text-slate-400">DTE (manual)</div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <input className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" type="number" min={0} step={1} value={gexMinDte} onChange={(e)=>setGexMinDte(parseInt(e.target.value||'0',10))} />
+                                    <input className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" type="number" min={1} step={1} value={gexMaxDte} onChange={(e)=>setGexMaxDte(parseInt(e.target.value||'9999',10))} />
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">min / max (dias)</div>
                                 </div>
-                                <div>
-                                  <div className="text-[10px] text-slate-400">DTE max</div>
-                                  <input className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" type="number" min={1} step={1} value={gexMaxDte} onChange={(e)=>setGexMaxDte(parseInt(e.target.value||'9999',10))} />
+
+                                <div className="col-span-2">
+                                  <div className="text-[10px] text-slate-400">Buckets (checkbox)</div>
+                                  <div className="mt-1 grid grid-cols-3 gap-2">
+                                    {gexRanges.map((r) => (
+                                      <label key={r.key} className="flex items-center gap-2 text-[11px] text-slate-200 bg-slate-900/40 border border-slate-800 rounded-lg px-2 py-1">
+                                        <input
+                                          type="checkbox"
+                                          checked={r.on}
+                                          onChange={(e) => {
+                                            const on = e.target.checked;
+                                            setGexRanges(gexRanges.map((x) => (x.key === r.key ? { ...x, on } : x)));
+                                          }}
+                                        />
+                                        {r.label}
+                                      </label>
+                                    ))}
+                                  </div>
+                                  <div className="mt-1 text-[10px] text-slate-500">Marque e clique em Aplicar para recalcular</div>
                                 </div>
+
                                 <div className="flex items-end">
                                   <button className="w-full bg-blue-600 hover:bg-blue-500 rounded-lg px-2 py-1 text-xs font-semibold" onClick={refresh}>
                                     Aplicar
+                                  </button>
+                                </div>
+                                <div className="flex items-end">
+                                  <button className="w-full bg-slate-900/60 border border-slate-700 hover:border-slate-500 rounded-lg px-2 py-1 text-xs font-semibold" onClick={() => setGexRanges(gexRanges.map((x) => ({ ...x, on: false })))}>
+                                    Limpar
                                   </button>
                                 </div>
                               </div>
