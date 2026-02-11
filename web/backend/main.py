@@ -318,6 +318,121 @@ def paper_history(limit: int = 500, user: dict = Depends(get_user)):
     return {"ok": True, "history": (_PAPER.get("history") or [])[:limit], "ts": int(time.time() * 1000)}
 
 
+@app.post("/api/paper/entry")
+async def paper_entry(req: Request, user: dict = Depends(get_user)):
+    body = await req.json()
+    cur = str(body.get("currency") or "BTC").upper()
+    expiry = str(body.get("expiry") or "")
+    strike = float(body.get("strike") or 0.0)
+    qty = float(body.get("qty") or 0.0)
+    call_name = str(body.get("callName") or "")
+    put_name = str(body.get("putName") or "")
+    entry_spot = float(body.get("entry_spot") or 0.0)
+    entry_spot_index = float(body.get("entry_spot_index") or 0.0)
+    entry_spot_last = float(body.get("entry_spot_last") or 0.0)
+    entry_cost_ask = float(body.get("entry_cost_ask") or 0.0)
+    entry_cost_mid = float(body.get("entry_cost_mid") or 0.0)
+    entry_cost_mark = float(body.get("entry_cost_mark") or 0.0)
+    entry_cost_usd = float(body.get("entry_cost_usd") or entry_cost_ask or entry_cost_mark or entry_cost_mid or 0.0)
+
+    if not expiry or not strike or not qty or not call_name or not put_name:
+        raise HTTPException(status_code=400, detail="expiry/strike/qty/callName/putName required")
+
+    # Rule A1: one open trade per (expiry,strike)
+    for t in (_PAPER.get("open") or []):
+        try:
+            if str(t.get("expiry")) == expiry and float(t.get("strike") or 0.0) == float(strike):
+                raise HTTPException(status_code=409, detail="trade already open for expiry+strike")
+        except HTTPException:
+            raise
+        except Exception:
+            continue
+
+    trade = {
+        "id": f"manual-{_now_ms()}",
+        "src": "MANUAL",
+        "currency": cur,
+        "expiry": expiry,
+        "strike": strike,
+        "qty": qty,
+        "entry_ts": _now_ms(),
+        "entry_spot": entry_spot,
+        "entry_spot_index": entry_spot_index,
+        "entry_spot_last": entry_spot_last,
+        "callName": call_name,
+        "putName": put_name,
+        "entry_cost_usd": entry_cost_usd,
+        "entry_cost_ask": entry_cost_ask,
+        "entry_cost_mid": entry_cost_mid,
+        "entry_cost_mark": entry_cost_mark,
+        "entry_call": body.get("entry_call") or {},
+        "entry_put": body.get("entry_put") or {},
+        "vol": body.get("vol") or {},
+    }
+
+    _PAPER["open"] = [trade] + list(_PAPER.get("open") or [])
+    _paper_save()
+    return {"ok": True, "trade": trade}
+
+
+@app.get("/api/paper/mtm")
+def paper_mtm(id: str, user: dict = Depends(get_user)):
+    tid = str(id or "")
+    if not tid:
+        raise HTTPException(status_code=400, detail="id required")
+    t = None
+    for x in (_PAPER.get("open") or []):
+        if str(x.get("id")) == tid:
+            t = x
+            break
+    if not t:
+        raise HTTPException(status_code=404, detail="trade not found")
+
+    cur = str(t.get("currency") or "BTC").upper()
+    perp = f"{cur}-PERPETUAL"
+    pt, _ = DeribitPublicClient(timeout=6.0).get_ticker(perp)
+    spot_index = float((pt or {}).get("index_price") or 0.0)
+    spot_last = float((pt or {}).get("last_price") or 0.0)
+    spot = float((pt or {}).get("index_price") or (pt or {}).get("last_price") or 0.0)
+
+    cn = str(t.get("callName") or "")
+    pn = str(t.get("putName") or "")
+    ct = {}
+    pt2 = {}
+    if cn:
+        ct, _ = DeribitPublicClient(timeout=6.0).get_ticker(cn)
+    if pn:
+        pt2, _ = DeribitPublicClient(timeout=6.0).get_ticker(pn)
+
+    def _prem_usd(tkr: dict) -> float:
+        m = float((tkr or {}).get("mark_price") or 0.0)
+        return m * float(spot or 0.0)
+
+    qty = float(t.get("qty") or 1.0)
+    call_usd = _prem_usd(ct) * qty
+    put_usd = _prem_usd(pt2) * qty
+    value = call_usd + put_usd
+    cost = float(t.get("entry_cost_usd") or 0.0)
+    pnl = value - cost
+    pnl_pct = (pnl / cost * 100.0) if cost else 0.0
+
+    return {
+        "ok": True,
+        "id": tid,
+        "spot": spot,
+        "spot_index": spot_index,
+        "spot_last": spot_last,
+        "call": ct,
+        "put": pt2,
+        "call_usd": call_usd,
+        "put_usd": put_usd,
+        "value_usd": value,
+        "pnl_usd": pnl,
+        "pnl_pct": pnl_pct,
+        "ts": _now_ms(),
+    }
+
+
 @app.post("/api/paper/close")
 async def paper_close(req: Request, user: dict = Depends(get_user)):
     body = await req.json()

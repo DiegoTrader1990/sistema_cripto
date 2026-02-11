@@ -33,6 +33,7 @@ type PaperTrade = {
   pnlUsd?: number;
 };
 
+// LocalStorage (legacy) still used for preferences only; trades now live server-side.
 const LS_KEY = 'paperbox.v1';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
@@ -89,6 +90,9 @@ export default function PaperBoxCard({
   const [tpUsd, setTpUsd] = useState<number>(150);
   const [slUsd, setSlUsd] = useState<number>(150);
   const [trades, setTrades] = useState<PaperTrade[]>([]);
+  const [serverOpen, setServerOpen] = useState<any[]>([]);
+  const [serverHist, setServerHist] = useState<any[]>([]);
+  const [serverErr, setServerErr] = useState<string | null>(null);
 
   const [mtm, setMtm] = useState<Record<string, { ts: number; valueUsd: number; pnlUsd: number; callT?: any; putT?: any; spot?: number }>>({});
   const [mtmErr, setMtmErr] = useState<string | null>(null);
@@ -124,6 +128,8 @@ export default function PaperBoxCard({
   const openTrades = useMemo(() => trades.filter((t) => !t.closedTs), [trades]);
   const closedTrades = useMemo(() => trades.filter((t) => t.closedTs), [trades]);
 
+  const openServer = useMemo(() => (serverOpen || []).filter((t) => !t.closed_ts), [serverOpen]);
+
   // If there are open trades and nothing is selected, keep it unselected (user might be preparing a new entry).
   // (We still show the open trades list above.)
 
@@ -131,6 +137,11 @@ export default function PaperBoxCard({
     if (!activeId) return null;
     return trades.find((t) => t.id === activeId) || null;
   }, [activeId, trades]);
+
+  const activeServerTrade = useMemo(() => {
+    if (!activeId) return null;
+    return (serverOpen || []).find((t) => String(t.id) === String(activeId)) || null;
+  }, [activeId, serverOpen]);
 
   const pnl = useMemo(() => {
     const p = closedTrades.reduce((a, t) => a + Number(t.pnlUsd || 0), 0);
@@ -188,6 +199,75 @@ export default function PaperBoxCard({
       putPremUsd: putPrem,
       totalCostUsd: total,
     };
+    // Create server-side paper trade (preferred)
+    (async () => {
+      try {
+        const cur = callName.startsWith('ETH') ? 'ETH' : 'BTC';
+        const perp = `${cur}-PERPETUAL`;
+        const spotT = await apiGet(`/api/desk/ticker?instrument=${encodeURIComponent(perp)}`);
+        const spotIndex = Number(spotT?.ticker?.index_price || 0);
+        const spotLast = Number(spotT?.ticker?.last_price || 0);
+        const spotNow = Number(spotIndex || spotLast || spot);
+
+        // estimate entry costs in USD using spotNow
+        const askCall = Number(selected.call?.ask_price || 0);
+        const askPut = Number(selected.put?.ask_price || 0);
+        const bidCall = Number(selected.call?.bid_price || 0);
+        const bidPut = Number(selected.put?.bid_price || 0);
+        const midCall = mid(bidCall, askCall);
+        const midPut = mid(bidPut, askPut);
+        const markCall = Number(selected.call?.mark_price || 0);
+        const markPut = Number(selected.put?.mark_price || 0);
+
+        const costAsk = (askCall + askPut) * spotNow * q;
+        const costMid = (midCall + midPut) * spotNow * q;
+        const costMark = (markCall + markPut) * spotNow * q;
+
+        const resp = await fetch(`${API_BASE}/api/paper/entry`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            currency: cur,
+            expiry,
+            strike: Number(selected.strike),
+            qty: q,
+            callName,
+            putName,
+            entry_spot: spotNow,
+            entry_spot_index: spotIndex,
+            entry_spot_last: spotLast,
+            entry_cost_usd: costAsk,
+            entry_cost_ask: costAsk,
+            entry_cost_mid: costMid,
+            entry_cost_mark: costMark,
+            entry_call: {
+              bid: Number(selected.call?.bid_price || 0),
+              ask: Number(selected.call?.ask_price || 0),
+              mark: Number(selected.call?.mark_price || 0),
+              iv: Number(selected.call?.mark_iv || 0),
+              oi: Number(selected.call?.open_interest || 0),
+            },
+            entry_put: {
+              bid: Number(selected.put?.bid_price || 0),
+              ask: Number(selected.put?.ask_price || 0),
+              mark: Number(selected.put?.mark_price || 0),
+              iv: Number(selected.put?.mark_iv || 0),
+              oi: Number(selected.put?.open_interest || 0),
+            },
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data?.error || 'paper entry failed');
+        setActiveId(String(data.trade?.id || ''));
+      } catch (e: any) {
+        setMtmErr(String(e?.message || e));
+      }
+    })();
+
+    // keep legacy local trade too (for now, until fully migrated)
     setTrades([t, ...trades]);
     setActiveId(t.id);
   }
@@ -201,6 +281,23 @@ export default function PaperBoxCard({
     const gross = callPay + putPay;
     const pnlUsd = gross - Number(t.totalCostUsd || 0);
     return { closeSpot, gross, pnlUsd };
+  }
+
+  async function closeServerTrade(id: string, reason: string = 'manual') {
+    const tok = localStorage.getItem('token') || '';
+    const res = await fetch(`${API_BASE}/api/paper/close`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, reason }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'close failed');
+    // refresh quickly
+    try {
+      const op = await apiGet('/api/paper/open');
+      setServerOpen(op.open || []);
+    } catch {}
+    return data;
   }
 
   function closeTrade(id: string, closeSpotOverride?: number) {
@@ -276,11 +373,46 @@ export default function PaperBoxCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.call?.instrument_name, selected?.put?.instrument_name]);
 
+  // Server-side paper sync + MTM refresh
   useEffect(() => {
     let alive = true;
     let timer: any = null;
 
     async function tick() {
+      try {
+        setServerErr(null);
+        const [op, hist] = await Promise.all([apiGet('/api/paper/open'), apiGet('/api/paper/history?limit=200')]);
+        if (!alive) return;
+        setServerOpen(op.open || []);
+        setServerHist(hist.history || []);
+      } catch (e: any) {
+        if (!alive) return;
+        setServerErr(String(e?.message || e));
+      }
+
+      // MTM for the selected open server trade
+      try {
+        if (activeId) {
+          const mt = await apiGet(`/api/paper/mtm?id=${encodeURIComponent(String(activeId))}`);
+          if (!alive) return;
+          setMtm((prev) => ({
+            ...prev,
+            [String(activeId)]: {
+              ts: Date.now(),
+              valueUsd: Number(mt.value_usd || 0),
+              pnlUsd: Number(mt.pnl_usd || 0),
+              callT: mt.call,
+              putT: mt.put,
+              spot: Number(mt.spot || 0),
+            },
+          }));
+          setMtmAgeSec(0);
+        }
+      } catch {
+        // ignore
+      }
+
+      // legacy local MTM (manual-only) stays for now
       if (!openTrades.length || !spot) return;
       try {
         setMtmErr(null);
@@ -323,7 +455,7 @@ export default function PaperBoxCard({
       if (timer) clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openTrades, spot]);
+  }, [openTrades, spot, activeId]);
 
   // Auto TP/SL (closes using MTM value)
   useEffect(() => {
@@ -427,22 +559,24 @@ export default function PaperBoxCard({
         </div>
       </div>
 
-      {openTrades.length ? (
+      {(openServer.length || openTrades.length) ? (
         <div className="mt-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold">Operações abertas ({openTrades.length})</div>
+            <div className="text-xs font-semibold">Operações abertas ({openServer.length || openTrades.length})</div>
             <div className="text-[11px] text-slate-500">clique para selecionar</div>
           </div>
+          {serverErr ? <div className="mt-2 text-[11px] text-amber-300">paper sync: {serverErr}</div> : null}
           <div className="mt-2 grid grid-cols-2 gap-2">
-            {openTrades.slice(0, 6).map((t) => {
-              const p = mtm[t.id]?.pnlUsd;
+            {(openServer.length ? openServer : openTrades).slice(0, 6).map((t: any) => {
+              const tid = String(t.id);
+              const p = mtm[tid]?.pnlUsd;
               const cls = p == null ? 'border-slate-800' : p >= 0 ? 'border-emerald-500/40' : 'border-rose-500/40';
               return (
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => setActiveId((prev) => (prev === t.id ? null : t.id))}
-                  className={`text-left bg-slate-900/30 border ${cls} rounded-lg p-2 hover:border-slate-600 ${activeId === t.id ? 'outline outline-1 outline-blue-500/40' : ''}`}
+                  onClick={() => setActiveId((prev) => (String(prev) === String(tid) ? null : tid))}
+                  className={`text-left bg-slate-900/30 border ${cls} rounded-lg p-2 hover:border-slate-600 ${String(activeId) === String(tid) ? 'outline outline-1 outline-blue-500/40' : ''}`}
                   title={t.id}
                 >
                   <div className="flex items-center justify-between">
@@ -450,7 +584,7 @@ export default function PaperBoxCard({
                     <div className="text-[11px] text-slate-500">{t.expiry}</div>
                   </div>
                   <div className="mt-1 flex items-center justify-between">
-                    <div className="text-[11px] text-slate-500">cost ${Number(t.totalCostUsd || 0).toFixed(0)}</div>
+                    <div className="text-[11px] text-slate-500">cost ${Number(t.entry_cost_usd ?? t.totalCostUsd || 0).toFixed(0)}</div>
                     <div className={`text-[11px] font-semibold ${p == null ? 'text-slate-500' : p >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{p == null ? '—' : `${p >= 0 ? '+' : ''}${Number(p).toFixed(2)}`}</div>
                   </div>
                 </button>
@@ -460,29 +594,29 @@ export default function PaperBoxCard({
         </div>
       ) : null}
 
-      {activeTrade && !activeTrade.closedTs ? (
+      {activeServerTrade && !activeServerTrade.closed_ts ? (
         <div className="mt-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
           <div className="flex items-center justify-between gap-2">
             <div>
               <div className="text-xs font-semibold">EM POSIÇÃO</div>
-              <div className="text-[11px] text-slate-500 break-all">{activeTrade.callName} + {activeTrade.putName}</div>
+              <div className="text-[11px] text-slate-500 break-all">{activeServerTrade.callName} + {activeServerTrade.putName}</div>
             </div>
             <div className="text-[11px] text-slate-500">mtm age: {mtmAgeSec == null ? '—' : `${mtmAgeSec.toFixed(1)}s`}</div>
           </div>
           <div className="mt-2 grid grid-cols-3 gap-2">
             <div>
               <div className="text-[11px] text-slate-400">Custo (entrada)</div>
-              <div className="text-sm font-semibold">${Number(activeTrade.totalCostUsd || 0).toFixed(2)}</div>
-              <div className="text-[11px] text-slate-500">spot entrada: {Number(activeTrade.spot || 0).toFixed(0)}</div>
+              <div className="text-sm font-semibold">${Number(activeServerTrade.entry_cost_usd || 0).toFixed(2)}</div>
+              <div className="text-[11px] text-slate-500">spot entrada: {Number(activeServerTrade.entry_spot || 0).toFixed(0)}</div>
             </div>
             <div>
               <div className="text-[11px] text-slate-400">Valor atual (a mercado)</div>
-              <div className="text-sm font-semibold">{mtm[activeTrade.id]?.valueUsd != null ? `$${Number(mtm[activeTrade.id].valueUsd).toFixed(2)}` : '—'}</div>
-              <div className="text-[11px] text-slate-500">spot agora: {Number(mtm[activeTrade.id]?.spot ?? spot ?? 0).toFixed(0)}</div>
+              <div className="text-sm font-semibold">{mtm[String(activeId || '')]?.valueUsd != null ? `$${Number(mtm[String(activeId || '')].valueUsd).toFixed(2)}` : '—'}</div>
+              <div className="text-[11px] text-slate-500">spot agora: {Number(mtm[String(activeId || '')]?.spot ?? spot ?? 0).toFixed(0)}</div>
               <div className="text-[11px] text-slate-500">call+put (MARK): {(() => {
-                const sp = Number(mtm[activeTrade.id]?.spot ?? spot ?? 0);
-                const c = premUsdFromTicker(mtm[activeTrade.id]?.callT, sp, 'MARK');
-                const p = premUsdFromTicker(mtm[activeTrade.id]?.putT, sp, 'MARK');
+                const sp = Number(mtm[String(activeId || '')]?.spot ?? spot ?? 0);
+                const c = premUsdFromTicker(mtm[String(activeId || '')]?.callT, sp, 'MARK');
+                const p = premUsdFromTicker(mtm[String(activeId || '')]?.putT, sp, 'MARK');
                 const tot = (c || 0) + (p || 0);
                 return tot ? `$${tot.toFixed(2)}` : '—';
               })()}</div>
@@ -490,36 +624,36 @@ export default function PaperBoxCard({
             <div>
               <div className="text-[11px] text-slate-400">PnL (MTM)</div>
               {(() => {
-                const p = mtm[activeTrade.id]?.pnlUsd;
+                const p = mtm[String(activeId || '')]?.pnlUsd;
                 const cls = p == null ? 'text-slate-500' : p >= 0 ? 'text-emerald-300' : 'text-rose-300';
                 return <div className={`text-lg font-bold ${cls}`}>{p == null ? '—' : `${p >= 0 ? '+' : ''}${Number(p).toFixed(2)}`}</div>;
               })()}
-              <div className="text-[11px] text-slate-500">pricing: {activeTrade.pricing} | expiry: {activeTrade.expiry}</div>
+              <div className="text-[11px] text-slate-500">src: {activeServerTrade.src || '—'} | expiry: {activeServerTrade.expiry}</div>
             </div>
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
             <div className="bg-slate-900/30 border border-slate-800 rounded-lg p-2">
               <div className="font-semibold text-slate-200">CALL</div>
-              <div className="text-slate-500 break-all">{activeTrade.callName}</div>
-              <div className="mt-1 text-slate-400">Entrada: bid {activeTrade.callEntry?.bid ?? '—'} / ask {activeTrade.callEntry?.ask ?? '—'} / mark {activeTrade.callEntry?.mark ?? '—'}</div>
-              <div className="text-slate-500">IV {activeTrade.callEntry?.iv ?? '—'} | OI {activeTrade.callEntry?.oi ?? '—'}</div>
-              <div className="mt-1 text-slate-200">Agora: bid {mtm[activeTrade.id]?.callT?.best_bid_price ?? '—'} / ask {mtm[activeTrade.id]?.callT?.best_ask_price ?? '—'} / mark {mtm[activeTrade.id]?.callT?.mark_price ?? '—'}</div>
+              <div className="text-slate-500 break-all">{activeServerTrade.callName}</div>
+              <div className="mt-1 text-slate-400">Entrada: bid {activeServerTrade.entry_call?.bid ?? '—'} / ask {activeServerTrade.entry_call?.ask ?? '—'} / mark {activeServerTrade.entry_call?.mark ?? '—'}</div>
+              <div className="text-slate-500">IV {activeServerTrade.entry_call?.iv ?? '—'} | OI {activeServerTrade.entry_call?.oi ?? '—'}</div>
+              <div className="mt-1 text-slate-200">Agora: bid {mtm[String(activeId || '')]?.callT?.best_bid_price ?? '—'} / ask {mtm[String(activeId || '')]?.callT?.best_ask_price ?? '—'} / mark {mtm[String(activeId || '')]?.callT?.mark_price ?? '—'}</div>
               <div className="text-slate-500">USD agora (MARK): {(() => {
-                const sp = Number(mtm[activeTrade.id]?.spot ?? spot ?? 0);
-                const usd = premUsdFromTicker(mtm[activeTrade.id]?.callT, sp, 'MARK');
+                const sp = Number(mtm[String(activeId || '')]?.spot ?? spot ?? 0);
+                const usd = premUsdFromTicker(mtm[String(activeId || '')]?.callT, sp, 'MARK');
                 return usd ? `$${usd.toFixed(2)}` : '—';
               })()}</div>
             </div>
             <div className="bg-slate-900/30 border border-slate-800 rounded-lg p-2">
               <div className="font-semibold text-slate-200">PUT</div>
-              <div className="text-slate-500 break-all">{activeTrade.putName}</div>
-              <div className="mt-1 text-slate-400">Entrada: bid {activeTrade.putEntry?.bid ?? '—'} / ask {activeTrade.putEntry?.ask ?? '—'} / mark {activeTrade.putEntry?.mark ?? '—'}</div>
-              <div className="text-slate-500">IV {activeTrade.putEntry?.iv ?? '—'} | OI {activeTrade.putEntry?.oi ?? '—'}</div>
-              <div className="mt-1 text-slate-200">Agora: bid {mtm[activeTrade.id]?.putT?.best_bid_price ?? '—'} / ask {mtm[activeTrade.id]?.putT?.best_ask_price ?? '—'} / mark {mtm[activeTrade.id]?.putT?.mark_price ?? '—'}</div>
+              <div className="text-slate-500 break-all">{activeServerTrade.putName}</div>
+              <div className="mt-1 text-slate-400">Entrada: bid {activeServerTrade.entry_put?.bid ?? '—'} / ask {activeServerTrade.entry_put?.ask ?? '—'} / mark {activeServerTrade.entry_put?.mark ?? '—'}</div>
+              <div className="text-slate-500">IV {activeServerTrade.entry_put?.iv ?? '—'} | OI {activeServerTrade.entry_put?.oi ?? '—'}</div>
+              <div className="mt-1 text-slate-200">Agora: bid {mtm[String(activeId || '')]?.putT?.best_bid_price ?? '—'} / ask {mtm[String(activeId || '')]?.putT?.best_ask_price ?? '—'} / mark {mtm[String(activeId || '')]?.putT?.mark_price ?? '—'}</div>
               <div className="text-slate-500">USD agora (MARK): {(() => {
-                const sp = Number(mtm[activeTrade.id]?.spot ?? spot ?? 0);
-                const usd = premUsdFromTicker(mtm[activeTrade.id]?.putT, sp, 'MARK');
+                const sp = Number(mtm[String(activeId || '')]?.spot ?? spot ?? 0);
+                const usd = premUsdFromTicker(mtm[String(activeId || '')]?.putT, sp, 'MARK');
                 return usd ? `$${usd.toFixed(2)}` : '—';
               })()}</div>
             </div>
@@ -539,20 +673,21 @@ export default function PaperBoxCard({
           <div className="text-[11px] text-slate-400">Ações</div>
           <button
             className="mt-2 w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 px-3 py-2 text-sm font-semibold"
-            disabled={!selected?.call || !selected?.put || !qty}
+            disabled={!selected?.call || !selected?.put || !qty || openServer.length > 0}
             onClick={simulateEntry}
           >
             Entrar (paper)
           </button>
+          {openServer.length > 0 ? <div className="mt-2 text-[11px] text-slate-500">Já existe posição aberta no servidor (A1). Feche para abrir outra.</div> : null}
           {!selected?.call?.instrument_name || !selected?.put?.instrument_name ? (
             <div className="mt-2 text-[11px] text-amber-300">Sem instrument_name para CALL/PUT (não dá pra MTM). Selecione outro strike/expiry.</div>
           ) : null}
           <div className="mt-2 flex items-center justify-between gap-2">
             <button
               className="w-full rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 disabled:opacity-60 px-3 py-2 text-xs font-semibold"
-              disabled={!activeTrade || !!activeTrade?.closedTs}
-              onClick={() => activeTrade && closeTrade(activeTrade.id, Number(spot || 0))}
-              title="Fechar a operação selecionada usando o spot atual"
+              disabled={!activeId}
+              onClick={() => activeId && closeServerTrade(String(activeId), 'manual')}
+              title="Fechar a operação selecionada (server-side)"
             >
               Fechar posição
             </button>
