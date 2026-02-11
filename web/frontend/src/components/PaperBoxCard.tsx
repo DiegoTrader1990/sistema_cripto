@@ -267,9 +267,8 @@ export default function PaperBoxCard({
       }
     })();
 
-    // keep legacy local trade too (for now, until fully migrated)
+    // keep legacy local trade (optional) but DO NOT override activeId (server is source of truth)
     setTrades([t, ...trades]);
-    setActiveId(t.id);
   }
 
   function calcPnlAtSpot(t: PaperTrade, sp: number) {
