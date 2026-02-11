@@ -293,7 +293,7 @@ export default function DeskPage() {
               </button>
 
               {chartCfgOpen ? (
-                <div className="mt-2 bg-slate-950/75 backdrop-blur border border-slate-800 rounded-2xl px-3 py-3 shadow-[0_0_0_1px_rgba(148,163,184,0.06)] w-[min(520px,80vw)]">
+                <div className="fixed left-6 top-20 z-[80] bg-slate-950/85 backdrop-blur border border-slate-800 rounded-2xl px-3 py-3 shadow-[0_0_0_1px_rgba(148,163,184,0.06)] w-[min(560px,92vw)] max-h-[74vh] overflow-auto">
                   <div className="flex items-center justify-between">
                     <div className="text-xs font-semibold text-slate-200">Configurações</div>
                     <button className="text-xs text-slate-400 hover:text-slate-200" onClick={() => setChartCfgOpen(false)}>
@@ -301,7 +301,7 @@ export default function DeskPage() {
                     </button>
                   </div>
 
-                  <div className="mt-3 max-h-[70vh] overflow-auto pr-1 space-y-3">
+                  <div className="mt-3 pr-1 space-y-3">
                     <div>
                       <div className="text-[10px] text-slate-400">Instrument</div>
                       <select className="w-full bg-slate-900/60 border border-slate-700 rounded-lg px-2 py-1 text-xs" value={instrument} onChange={(e) => setInstrument(e.target.value)}>
