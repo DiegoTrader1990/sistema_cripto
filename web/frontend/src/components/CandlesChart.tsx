@@ -188,7 +188,8 @@ export default function CandlesChart({
         const ln = series.createPriceLine({
           price: Number(lv.price),
           color: lv.color || 'rgba(99, 102, 241, 0.85)',
-          lineWidth: Math.max(1, Math.min(6, Number(lv.width || 2))),
+          // lightweight-charts LineWidth is restricted (commonly 1..4). Keep within range for TS + runtime.
+          lineWidth: Math.max(1, Math.min(4, Number(lv.width || 2))) as any,
           lineStyle: typeof lv.style === 'number' ? lv.style : 0,
           axisLabelVisible: true,
           title: lv.label || '',
@@ -218,7 +219,8 @@ export default function CandlesChart({
           // @ts-ignore
           const ls = chart.addLineSeries({
             color: lv.color || 'rgba(99, 102, 241, 0.85)',
-            lineWidth: Math.max(1, Math.min(6, Number(lv.width || 2))),
+            // lightweight-charts LineWidth is restricted (commonly 1..4). Keep within range for TS + runtime.
+            lineWidth: Math.max(1, Math.min(4, Number(lv.width || 2))) as any,
             // @ts-ignore
             lineStyle: typeof lv.style === 'number' ? lv.style : 0,
             priceLineVisible: false,
