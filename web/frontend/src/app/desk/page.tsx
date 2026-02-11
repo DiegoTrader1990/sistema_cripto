@@ -406,7 +406,8 @@ export default function DeskPage() {
                                 const strength = Math.min(1, Math.abs(g) / maxAbsWall);
                                 const alpha = 0.35 + 0.55 * strength;
                                 const gShort = Math.abs(g) >= 1e6 ? `${(g / 1e6).toFixed(1)}M` : Math.abs(g) >= 1e3 ? `${(g / 1e3).toFixed(1)}k` : g.toFixed(0);
-                                return { price: s, label: `#${idx + 1} ${tag} ${gShort}`.trim(), color: `rgba(168, 85, 247, ${alpha.toFixed(2)})` };
+                                const w = 1 + Math.round(4 * strength);
+                                return { price: s, label: `#${idx + 1} ${tag} ${gShort}`.trim(), color: `rgba(168, 85, 247, ${alpha.toFixed(2)})`, width: w };
                               }),
                           ]
                         : []
