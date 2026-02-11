@@ -80,10 +80,12 @@ export default function PaperBoxCard({
   spot: number;
   targetPct: number;
 }) {
-  const [cash0, setCash0] = useState(1000);
+  const [cash0, setCash0] = useState(1000); // capital base
   const [riskUsd, setRiskUsd] = useState(150);
   const [pricing, setPricing] = useState<'MARK' | 'MID'>('MARK');
   const [autoOn, setAutoOn] = useState<boolean>(true);
+  const [qty, setQty] = useState<number>(0);
+  const [minLot, setMinLot] = useState<number | null>(null);
   const [tpUsd, setTpUsd] = useState<number>(150);
   const [slUsd, setSlUsd] = useState<number>(150);
   const [trades, setTrades] = useState<PaperTrade[]>([]);
@@ -104,6 +106,7 @@ export default function PaperBoxCard({
       if (typeof obj?.slUsd === 'number') setSlUsd(obj.slUsd);
       if (typeof obj?.autoOn === 'boolean') setAutoOn(obj.autoOn);
       if (obj?.pricing === 'MID') setPricing('MID');
+      if (typeof obj?.qty === 'number') setQty(obj.qty);
       if (Array.isArray(obj?.trades)) setTrades(obj.trades);
     } catch {
       // ignore
@@ -112,11 +115,11 @@ export default function PaperBoxCard({
 
   useEffect(() => {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ cash0, riskUsd, pricing, autoOn, tpUsd, slUsd, trades }));
+      localStorage.setItem(LS_KEY, JSON.stringify({ cash0, riskUsd, pricing, autoOn, tpUsd, slUsd, qty, trades }));
     } catch {
       // ignore
     }
-  }, [cash0, riskUsd, pricing, trades]);
+  }, [cash0, riskUsd, pricing, trades, qty]);
 
   const openTrades = useMemo(() => trades.filter((t) => !t.closedTs), [trades]);
   const closedTrades = useMemo(() => trades.filter((t) => t.closedTs), [trades]);
@@ -140,6 +143,13 @@ export default function PaperBoxCard({
 
   const equity = useMemo(() => cash0 + pnl, [cash0, pnl]);
 
+  const leverage = useMemo(() => {
+    const sp = Number(spot || 0);
+    if (!sp || !qty || !equity) return null;
+    const notional = sp * Number(qty || 0);
+    return notional / equity;
+  }, [spot, qty, equity]);
+
   function simulateEntry() {
     if (!selected || !selected.call || !selected.put || !spot) return;
 
@@ -147,8 +157,11 @@ export default function PaperBoxCard({
     const putName = String(selected.put?.instrument_name || '');
     if (!callName || !putName) return;
 
-    const callPrem = premUsd(selected.call, spot, pricing);
-    const putPrem = premUsd(selected.put, spot, pricing);
+    const q = Math.max(0, Number(qty || 0));
+    if (!q) return;
+
+    const callPrem = premUsd(selected.call, spot, pricing) * q;
+    const putPrem = premUsd(selected.put, spot, pricing) * q;
     const total = callPrem + putPrem;
 
     const t: PaperTrade = {
@@ -234,6 +247,39 @@ export default function PaperBoxCard({
   }
 
   // Real-time MTM (mark/mid) for open trades
+  // Detect min lot for the currently selected instruments (Deribit min_trade_amount)
+  useEffect(() => {
+    let alive = true;
+    async function run() {
+      try {
+        const callName = String(selected?.call?.instrument_name || '');
+        const putName = String(selected?.put?.instrument_name || '');
+        if (!callName || !putName) return;
+
+        const [c, p] = await Promise.all([
+          apiGet(`/api/desk/instrument?instrument=${encodeURIComponent(callName)}`),
+          apiGet(`/api/desk/instrument?instrument=${encodeURIComponent(putName)}`),
+        ]);
+        const mc = Number(c?.meta?.min_trade_amount || 0);
+        const mp = Number(p?.meta?.min_trade_amount || 0);
+        const m = Math.max(mc || 0, mp || 0);
+        if (!alive) return;
+        if (m > 0) {
+          setMinLot(m);
+          // if qty is unset or lower than min, set to min by default
+          setQty((q) => (!q || q < m ? m : q));
+        }
+      } catch {
+        // ignore
+      }
+    }
+    run();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.call?.instrument_name, selected?.put?.instrument_name]);
+
   useEffect(() => {
     let alive = true;
     let timer: any = null;
@@ -490,12 +536,13 @@ export default function PaperBoxCard({
           <div className="text-[11px] text-slate-400">Equity (realizado)</div>
           <div className="text-lg font-semibold">${equity.toFixed(2)}</div>
           <div className="text-xs text-slate-400">PnL: {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}</div>
+          <div className="text-[11px] text-slate-500 mt-1">Alav. efetiva (aprox): {leverage == null ? '—' : leverage.toFixed(2)}x</div>
         </div>
         <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
           <div className="text-[11px] text-slate-400">Ações</div>
           <button
             className="mt-2 w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 px-3 py-2 text-sm font-semibold"
-            disabled={!selected?.call || !selected?.put}
+            disabled={!selected?.call || !selected?.put || !qty}
             onClick={simulateEntry}
           >
             Entrar (paper)

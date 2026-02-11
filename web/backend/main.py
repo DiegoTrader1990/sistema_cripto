@@ -548,6 +548,16 @@ def _cache_set(key: str, val: Any, ttl: float = 15.0):
         pass
 
 
+@app.get("/api/desk/instrument")
+def desk_instrument(instrument: str, user: dict = Depends(get_user)):
+    """Proxy Deribit /public/get_instrument for instrument metadata (min_trade_amount, contract_size, etc)."""
+    instrument = (instrument or "").strip()
+    if not instrument:
+        raise HTTPException(status_code=400, detail="instrument required")
+    out = deribit_get("/public/get_instrument", {"instrument_name": instrument}) or {}
+    return {"ok": True, "instrument": instrument, "meta": out, "ts": int(time.time() * 1000)}
+
+
 @app.get("/api/desk/ticker")
 def desk_ticker(instrument: str, user: dict = Depends(get_user)):
     """Proxy Deribit /public/ticker for a single instrument.
