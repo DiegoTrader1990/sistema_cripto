@@ -217,12 +217,13 @@ export default function DeskPage() {
   }, [perStrike]);
 
   const strikeRows = useMemo(() => {
-    const spot = last || 0;
-    if (!spot) return Array.from(byStrike.values());
-    const lo = spot * (1 - strikeRangePct / 100);
-    const hi = spot * (1 + strikeRangePct / 100);
+    const spot = Number(last || 0);
+    const center = Number(selectedStrike || 0) || spot;
+    if (!center) return Array.from(byStrike.values());
+    const lo = center * (1 - strikeRangePct / 100);
+    const hi = center * (1 + strikeRangePct / 100);
     return Array.from(byStrike.values()).filter((rr) => Number(rr.strike) >= lo && Number(rr.strike) <= hi);
-  }, [byStrike, last, strikeRangePct]);
+  }, [byStrike, last, strikeRangePct, selectedStrike]);
 
   const selected = useMemo(() => {
     if (!selectedStrike) return null;
@@ -572,6 +573,17 @@ export default function DeskPage() {
 
         const opsNode = (
           <div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs text-slate-500">Seleção: <span className="text-slate-200 font-semibold">{selectedStrike ?? '—'}</span></div>
+              <button
+                type="button"
+                className="text-xs bg-slate-900/60 border border-slate-800 rounded px-2 py-1 hover:border-slate-600"
+                onClick={() => setSelectedStrike(null)}
+                title="Limpar seleção"
+              >
+                Limpar
+              </button>
+            </div>
             <SpotPulseCard spot={Number(last || 0)} selectedStrike={selectedStrike} flip={flip} targetPct={planTargetPct} />
             <div className="mt-3 text-xs text-slate-500">
               Clique no gráfico para selecionar o nível GEX mais próximo. Se o clique não funcionar, use a lista de níveis abaixo.

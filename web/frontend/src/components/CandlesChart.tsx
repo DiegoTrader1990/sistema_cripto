@@ -267,7 +267,7 @@ export default function CandlesChart({
       // @ts-ignore
       chart.unsubscribeClick(handler);
     };
-  }, [onPickPrice]);
+  }, [onPickPrice, levels?.length]);
 
   return <div ref={ref} className={className || "w-full h-[440px]"} style={{ touchAction: 'none' }} />;
 }
