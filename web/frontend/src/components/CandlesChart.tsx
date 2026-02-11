@@ -72,8 +72,17 @@ export default function CandlesChart({
         crosshair: {
           mode: CrosshairMode.Normal,
         },
-        handleScroll: true,
-        handleScale: true,
+        handleScroll: {
+          mouseWheel: true,
+          pressedMouseMove: true,
+          horzTouchDrag: true,
+          vertTouchDrag: true,
+        },
+        handleScale: {
+          axisPressedMouseMove: true,
+          mouseWheel: true,
+          pinch: true,
+        },
       });
 
       const series = chart.addCandlestickSeries({
@@ -260,5 +269,5 @@ export default function CandlesChart({
     };
   }, [onPickPrice]);
 
-  return <div ref={ref} className={className || "w-full h-[440px]"} />;
+  return <div ref={ref} className={className || "w-full h-[440px]"} style={{ touchAction: 'none' }} />;
 }

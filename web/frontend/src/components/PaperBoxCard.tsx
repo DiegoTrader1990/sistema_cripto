@@ -121,6 +121,13 @@ export default function PaperBoxCard({
   const openTrades = useMemo(() => trades.filter((t) => !t.closedTs), [trades]);
   const closedTrades = useMemo(() => trades.filter((t) => t.closedTs), [trades]);
 
+  // Ensure we always have an active trade when there are open trades
+  useEffect(() => {
+    if (activeId) return;
+    if (openTrades.length) setActiveId(openTrades[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTrades.length]);
+
   const activeTrade = useMemo(() => {
     if (!activeId) return null;
     return trades.find((t) => t.id === activeId) || null;
@@ -378,6 +385,39 @@ export default function PaperBoxCard({
         </div>
       </div>
 
+      {openTrades.length ? (
+        <div className="mt-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold">Operações abertas ({openTrades.length})</div>
+            <div className="text-[11px] text-slate-500">clique para selecionar</div>
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {openTrades.slice(0, 6).map((t) => {
+              const p = mtm[t.id]?.pnlUsd;
+              const cls = p == null ? 'border-slate-800' : p >= 0 ? 'border-emerald-500/40' : 'border-rose-500/40';
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveId(t.id)}
+                  className={`text-left bg-slate-900/30 border ${cls} rounded-lg p-2 hover:border-slate-600 ${activeId === t.id ? 'outline outline-1 outline-blue-500/40' : ''}`}
+                  title={t.id}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-semibold text-slate-200">K {Number(t.strike).toFixed(0)}</div>
+                    <div className="text-[11px] text-slate-500">{t.expiry}</div>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between">
+                    <div className="text-[11px] text-slate-500">cost ${Number(t.totalCostUsd || 0).toFixed(0)}</div>
+                    <div className={`text-[11px] font-semibold ${p == null ? 'text-slate-500' : p >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{p == null ? '—' : `${p >= 0 ? '+' : ''}${Number(p).toFixed(2)}`}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       {activeTrade && !activeTrade.closedTs ? (
         <div className="mt-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
           <div className="flex items-center justify-between gap-2">
@@ -397,6 +437,13 @@ export default function PaperBoxCard({
               <div className="text-[11px] text-slate-400">Valor atual (a mercado)</div>
               <div className="text-sm font-semibold">{mtm[activeTrade.id]?.valueUsd != null ? `$${Number(mtm[activeTrade.id].valueUsd).toFixed(2)}` : '—'}</div>
               <div className="text-[11px] text-slate-500">spot agora: {Number(mtm[activeTrade.id]?.spot ?? spot ?? 0).toFixed(0)}</div>
+              <div className="text-[11px] text-slate-500">call+put (MARK): {(() => {
+                const sp = Number(mtm[activeTrade.id]?.spot ?? spot ?? 0);
+                const c = premUsdFromTicker(mtm[activeTrade.id]?.callT, sp, 'MARK');
+                const p = premUsdFromTicker(mtm[activeTrade.id]?.putT, sp, 'MARK');
+                const tot = (c || 0) + (p || 0);
+                return tot ? `$${tot.toFixed(2)}` : '—';
+              })()}</div>
             </div>
             <div>
               <div className="text-[11px] text-slate-400">PnL (MTM)</div>
@@ -416,6 +463,11 @@ export default function PaperBoxCard({
               <div className="mt-1 text-slate-400">Entrada: bid {activeTrade.callEntry?.bid ?? '—'} / ask {activeTrade.callEntry?.ask ?? '—'} / mark {activeTrade.callEntry?.mark ?? '—'}</div>
               <div className="text-slate-500">IV {activeTrade.callEntry?.iv ?? '—'} | OI {activeTrade.callEntry?.oi ?? '—'}</div>
               <div className="mt-1 text-slate-200">Agora: bid {mtm[activeTrade.id]?.callT?.best_bid_price ?? '—'} / ask {mtm[activeTrade.id]?.callT?.best_ask_price ?? '—'} / mark {mtm[activeTrade.id]?.callT?.mark_price ?? '—'}</div>
+              <div className="text-slate-500">USD agora (MARK): {(() => {
+                const sp = Number(mtm[activeTrade.id]?.spot ?? spot ?? 0);
+                const usd = premUsdFromTicker(mtm[activeTrade.id]?.callT, sp, 'MARK');
+                return usd ? `$${usd.toFixed(2)}` : '—';
+              })()}</div>
             </div>
             <div className="bg-slate-900/30 border border-slate-800 rounded-lg p-2">
               <div className="font-semibold text-slate-200">PUT</div>
@@ -423,6 +475,11 @@ export default function PaperBoxCard({
               <div className="mt-1 text-slate-400">Entrada: bid {activeTrade.putEntry?.bid ?? '—'} / ask {activeTrade.putEntry?.ask ?? '—'} / mark {activeTrade.putEntry?.mark ?? '—'}</div>
               <div className="text-slate-500">IV {activeTrade.putEntry?.iv ?? '—'} | OI {activeTrade.putEntry?.oi ?? '—'}</div>
               <div className="mt-1 text-slate-200">Agora: bid {mtm[activeTrade.id]?.putT?.best_bid_price ?? '—'} / ask {mtm[activeTrade.id]?.putT?.best_ask_price ?? '—'} / mark {mtm[activeTrade.id]?.putT?.mark_price ?? '—'}</div>
+              <div className="text-slate-500">USD agora (MARK): {(() => {
+                const sp = Number(mtm[activeTrade.id]?.spot ?? spot ?? 0);
+                const usd = premUsdFromTicker(mtm[activeTrade.id]?.putT, sp, 'MARK');
+                return usd ? `$${usd.toFixed(2)}` : '—';
+              })()}</div>
             </div>
           </div>
         </div>
