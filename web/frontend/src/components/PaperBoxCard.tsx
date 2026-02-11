@@ -583,7 +583,7 @@ export default function PaperBoxCard({
                     <div className="text-[11px] text-slate-500">{t.expiry}</div>
                   </div>
                   <div className="mt-1 flex items-center justify-between">
-                    <div className="text-[11px] text-slate-500">cost ${Number(t.entry_cost_usd ?? t.totalCostUsd || 0).toFixed(0)}</div>
+                    <div className="text-[11px] text-slate-500">cost ${Number((t.entry_cost_usd ?? t.totalCostUsd) || 0).toFixed(0)}</div>
                     <div className={`text-[11px] font-semibold ${p == null ? 'text-slate-500' : p >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{p == null ? '—' : `${p >= 0 ? '+' : ''}${Number(p).toFixed(2)}`}</div>
                   </div>
                 </button>
