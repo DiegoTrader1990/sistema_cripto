@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import time
+import asyncio
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -305,6 +306,82 @@ async def login(req: Request):
     raise HTTPException(status_code=401, detail="invalid credentials")
 
 
+# -------------------- Paper (server-side) API --------------------
+@app.get("/api/paper/open")
+def paper_open(user: dict = Depends(get_user)):
+    return {"ok": True, "open": _PAPER.get("open") or [], "ts": int(time.time() * 1000)}
+
+
+@app.get("/api/paper/history")
+def paper_history(limit: int = 500, user: dict = Depends(get_user)):
+    limit = max(1, min(2000, int(limit)))
+    return {"ok": True, "history": (_PAPER.get("history") or [])[:limit], "ts": int(time.time() * 1000)}
+
+
+@app.post("/api/paper/close")
+async def paper_close(req: Request, user: dict = Depends(get_user)):
+    body = await req.json()
+    tid = str(body.get("id") or "")
+    reason = str(body.get("reason") or "manual")
+    if not tid:
+        raise HTTPException(status_code=400, detail="id required")
+    # move from open -> history
+    opens = list(_PAPER.get("open") or [])
+    keep = []
+    closed = None
+    for t in opens:
+        if str(t.get("id")) == tid:
+            closed = dict(t)
+        else:
+            keep.append(t)
+    if not closed:
+        raise HTTPException(status_code=404, detail="trade not found")
+    closed["closed_ts"] = int(time.time() * 1000)
+    closed["close_reason"] = reason
+    _PAPER["open"] = keep
+    _PAPER.setdefault("history", []).insert(0, closed)
+    _PAPER["history"] = (_PAPER.get("history") or [])[:2000]
+    _paper_save()
+    return {"ok": True, "closed": closed}
+
+
+# -------------------- BOT control API (paper server-side) --------------------
+@app.get("/api/bot/status")
+def bot_status(user: dict = Depends(get_user)):
+    return {"ok": True, "bot": _BOT, "paper_open": len(_PAPER.get("open") or []), "ts": int(time.time() * 1000)}
+
+
+@app.post("/api/bot/toggle")
+async def bot_toggle(req: Request, user: dict = Depends(get_user)):
+    body = await req.json()
+    if "enabled" in body:
+        _BOT["enabled"] = bool(body.get("enabled"))
+    if "auto_entry" in body:
+        _BOT["auto_entry"] = bool(body.get("auto_entry"))
+    _BOT["last_action_ms"] = int(time.time() * 1000)
+    return {"ok": True, "bot": _BOT}
+
+
+@app.post("/api/bot/config")
+async def bot_config(req: Request, user: dict = Depends(get_user)):
+    body = await req.json()
+    cur = str(body.get("currency") or _BOT.get("currency") or "BTC").upper()
+    expiries = body.get("expiries") or []
+    if not isinstance(expiries, list):
+        expiries = []
+    expiries = [str(x) for x in expiries if x]
+    _BOT["currency"] = cur
+    _BOT["expiries"] = expiries
+    _BOT["strike_range_pct"] = float(body.get("strike_range_pct") or _BOT.get("strike_range_pct") or 8.0)
+    _BOT["walls_n"] = int(body.get("walls_n") or _BOT.get("walls_n") or 18)
+    _BOT["tp_move_pct"] = float(body.get("tp_move_pct") or _BOT.get("tp_move_pct") or 1.5)
+    _BOT["sl_pnl_pct"] = float(body.get("sl_pnl_pct") or _BOT.get("sl_pnl_pct") or -60.0)
+    _BOT["qty"] = float(body.get("qty") or _BOT.get("qty") or 0.0)
+    _BOT["spot_src"] = str(body.get("spot_src") or _BOT.get("spot_src") or "index")
+    _BOT["last_action_ms"] = int(time.time() * 1000)
+    return {"ok": True, "bot": _BOT}
+
+
 @app.get("/api/desk/ohlc")
 def desk_ohlc(
     instrument: str = "BTC-PERPETUAL",
@@ -527,6 +604,56 @@ def desk_chain(currency: str = "BTC", expiry: str = "", strike_range_pct: float 
 
 # -------------------- Desk Quotes / Walls (Real-time helpers) --------------------
 _WALLS_CACHE: dict[str, Any] = {}
+
+# -------------------- Paper (server-side) + BOT state --------------------
+PAPER_STATE_PATH = os.environ.get("PAPER_STATE_PATH", "./paper_state.json")
+
+_PAPER: dict[str, Any] = {
+    "open": [],  # list[dict]
+    "history": [],  # list[dict]
+    "ts": int(time.time() * 1000),
+}
+
+_BOT: dict[str, Any] = {
+    "enabled": False,
+    "auto_entry": False,
+    "currency": "BTC",
+    "expiries": [],  # list[str] YYYY-MM-DD
+    "strike_range_pct": 8.0,
+    "walls_n": 18,
+    "tp_move_pct": 1.5,
+    "sl_pnl_pct": -60.0,
+    "qty": 0.0,  # 0 => auto(min lot)
+    "spot_src": "index",  # index|last
+    "last_spot": None,
+    "armed": True,
+    "cooldown_sec": 15,
+    "last_action_ms": 0,
+}
+
+_BOT_TASK: Optional[asyncio.Task] = None
+
+
+def _paper_load():
+    try:
+        if not os.path.exists(PAPER_STATE_PATH):
+            return
+        with open(PAPER_STATE_PATH, "r", encoding="utf-8") as f:
+            obj = json.load(f) or {}
+        if isinstance(obj, dict):
+            _PAPER["open"] = list(obj.get("open") or [])
+            _PAPER["history"] = list(obj.get("history") or [])
+    except Exception:
+        pass
+
+
+def _paper_save():
+    try:
+        obj = {"open": _PAPER.get("open") or [], "history": _PAPER.get("history") or [], "ts": int(time.time() * 1000)}
+        with open(PAPER_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(obj, f)
+    except Exception:
+        pass
 
 
 def _cache_get(key: str) -> Any:
@@ -935,3 +1062,263 @@ async def http_exc(_, exc: HTTPException):
 async def any_exc(_, exc: Exception):
     # Ensure frontend always receives JSON (avoid "Unexpected token <" on 500 HTML)
     return JSONResponse(status_code=500, content={"ok": False, "error": f"server_error: {exc}"})
+
+
+# -------------------- BOT background loop --------------------
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _spot_from_ticker(tkr: dict, src: str = "index") -> float:
+    try:
+        if src == "last":
+            return float(tkr.get("last_price") or tkr.get("index_price") or 0.0)
+        return float(tkr.get("index_price") or tkr.get("last_price") or 0.0)
+    except Exception:
+        return 0.0
+
+
+def _touched(prev_s: float, s: float, k: float, eps: float) -> bool:
+    try:
+        if abs(s - k) <= eps:
+            return True
+        # cross
+        return (prev_s - k) * (s - k) <= 0
+    except Exception:
+        return False
+
+
+def _compute_walls_for_expiries(currency: str, expiries: list[str], strike_range_pct: float, walls_n: int) -> list[float]:
+    # Combine strike nets across expiries (simple sum) and rank by abs(gex).
+    agg: dict[float, float] = {}
+    used: list[str] = []
+    for ex in expiries[:8]:
+        try:
+            ch = desk_chain(currency=currency, expiry=ex, strike_range_pct=strike_range_pct, user={"u": "bot"})
+            used.append(ex)
+            for row in (ch.get("strike_net") or []):
+                k = float(row.get("strike") or 0.0)
+                g = float(row.get("gex") or 0.0)
+                agg[k] = float(agg.get(k, 0.0)) + g
+        except Exception:
+            continue
+    if not agg:
+        return []
+    ranked = sorted(agg.items(), key=lambda kv: abs(float(kv[1])), reverse=True)
+    strikes = [float(k) for (k, _) in ranked[: max(1, int(walls_n or 18))] if float(k) > 0]
+    strikes = sorted(set(strikes))
+    return strikes
+
+
+def _open_trade_exists(currency: str, expiry: str, strike: float) -> bool:
+    for t in (_PAPER.get("open") or []):
+        try:
+            if (t.get("currency") == currency) and (str(t.get("expiry")) == str(expiry)) and float(t.get("strike") or 0) == float(strike):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+async def _bot_loop():
+    while True:
+        await asyncio.sleep(2.0)
+        try:
+            if not _BOT.get("enabled"):
+                continue
+
+            cur = str(_BOT.get("currency") or "BTC").upper()
+            expiries = list(_BOT.get("expiries") or [])
+            if not expiries:
+                continue
+
+            perp = f"{cur}-PERPETUAL"
+            tkr, _ = DeribitPublicClient(timeout=6.0).get_ticker(perp)
+            s_now = _spot_from_ticker(tkr or {}, src=str(_BOT.get("spot_src") or "index"))
+            s_last = float((tkr or {}).get("last_price") or 0.0)
+            s_index = float((tkr or {}).get("index_price") or 0.0)
+            if not s_now:
+                continue
+
+            prev = float(_BOT.get("last_spot") or s_now)
+            _BOT["last_spot"] = float(s_now)
+
+            # If we have an open trade, monitor exits/roll
+            opens = list(_PAPER.get("open") or [])
+            if opens:
+                # Only manage the most recent open (v1)
+                t = opens[0]
+                entry_spot = float(t.get("entry_spot") or 0.0) or s_now
+                move_pct = abs(s_now / entry_spot - 1.0) * 100.0 if entry_spot else 0.0
+
+                # MTM using mark prices
+                try:
+                    cn = str(t.get("callName") or "")
+                    pn = str(t.get("putName") or "")
+                    if cn and pn:
+                        ct, _ = DeribitPublicClient(timeout=6.0).get_ticker(cn)
+                        pt, _ = DeribitPublicClient(timeout=6.0).get_ticker(pn)
+                        # option prices are in underlying units; USD approx = price*spot
+                        call_usd = float((ct.get("mark_price") or 0.0)) * s_now
+                        put_usd = float((pt.get("mark_price") or 0.0)) * s_now
+                        value = (call_usd + put_usd) * float(t.get("qty") or 1.0)
+                    else:
+                        value = 0.0
+                except Exception:
+                    value = 0.0
+
+                cost = float(t.get("entry_cost_usd") or 0.0)
+                pnl = (value - cost) if (cost and value) else 0.0
+                pnl_pct = (pnl / cost * 100.0) if cost else 0.0
+
+                # Stop
+                if pnl_pct <= float(_BOT.get("sl_pnl_pct") or -60.0):
+                    t["close_reason"] = "STOP_PNL"
+                    t["closed_ts"] = _now_ms()
+                    t["exit_spot"] = s_now
+                    t["exit_value_usd"] = value
+                    t["pnl_usd"] = pnl
+                    t["pnl_pct"] = pnl_pct
+                    _PAPER["open"] = []
+                    _PAPER.setdefault("history", []).insert(0, t)
+                    _paper_save()
+                    continue
+
+                # TP
+                if move_pct >= float(_BOT.get("tp_move_pct") or 1.5):
+                    t["close_reason"] = "TP_MOVE"
+                    t["closed_ts"] = _now_ms()
+                    t["exit_spot"] = s_now
+                    t["exit_value_usd"] = value
+                    t["pnl_usd"] = pnl
+                    t["pnl_pct"] = pnl_pct
+                    _PAPER["open"] = []
+                    _PAPER.setdefault("history", []).insert(0, t)
+                    _paper_save()
+                    continue
+
+                # Roll if touched another wall
+                walls = _compute_walls_for_expiries(cur, expiries, float(_BOT.get("strike_range_pct") or 8.0), int(_BOT.get("walls_n") or 18))
+                eps = max(1.0, float(s_now) * 0.00005)
+                touched = [k for k in walls if float(k) != float(t.get("strike") or 0.0) and _touched(prev, s_now, float(k), eps)]
+                if touched:
+                    # close
+                    t["close_reason"] = "ROLL_TOUCH_WALL"
+                    t["closed_ts"] = _now_ms()
+                    t["exit_spot"] = s_now
+                    t["exit_value_usd"] = value
+                    t["pnl_usd"] = pnl
+                    t["pnl_pct"] = pnl_pct
+                    _PAPER["open"] = []
+                    _PAPER.setdefault("history", []).insert(0, t)
+                    _paper_save()
+                    # open new immediately (if auto_entry)
+                    if not _BOT.get("auto_entry"):
+                        continue
+                    # choose closest
+                    k2 = min(touched, key=lambda kk: abs(float(kk) - float(s_now)))
+                    _BOT["last_action_ms"] = _now_ms()
+                    # fall through to entry logic below by setting prev
+                    prev = s_now
+                else:
+                    continue
+
+            # Entry
+            if not _BOT.get("auto_entry"):
+                continue
+            if not ((time.time() * 1000) - float(_BOT.get("last_action_ms") or 0) >= float(_BOT.get("cooldown_sec") or 15) * 1000.0):
+                continue
+
+            walls = _compute_walls_for_expiries(cur, expiries, float(_BOT.get("strike_range_pct") or 8.0), int(_BOT.get("walls_n") or 18))
+            if not walls:
+                continue
+            eps = max(1.0, float(s_now) * 0.00005)
+            touched = [k for k in walls if _touched(prev, s_now, float(k), eps)]
+            if not touched:
+                continue
+            k0 = min(touched, key=lambda kk: abs(float(kk) - float(s_now)))
+
+            # choose expiry for execution: nearest in list
+            expiry_exec = expiries[0]
+            # Resolve instruments from chain
+            ch = desk_chain(currency=cur, expiry=expiry_exec, strike_range_pct=float(_BOT.get("strike_range_pct") or 8.0), user={"u": "bot"})
+            row = None
+            for rr in (ch.get("per_strike") or []):
+                if float(rr.get("strike") or 0.0) == float(k0):
+                    row = rr
+                    break
+            if not row:
+                continue
+            call = (row.get("call") or {})
+            put = (row.get("put") or {})
+            call_name = str(call.get("instrument_name") or "")
+            put_name = str(put.get("instrument_name") or "")
+            if not call_name or not put_name:
+                continue
+
+            # qty: for now 1 (min lot already on frontend; we will refine later)
+            qty = float(_BOT.get("qty") or 0.0) or 1.0
+
+            ask_call = float(call.get("ask_price") or 0.0)
+            ask_put = float(put.get("ask_price") or 0.0)
+            mid_call = float(call.get("bid_price") or 0.0) * 0.5 + float(call.get("ask_price") or 0.0) * 0.5
+            mid_put = float(put.get("bid_price") or 0.0) * 0.5 + float(put.get("ask_price") or 0.0) * 0.5
+            mark_call = float(call.get("mark_price") or 0.0)
+            mark_put = float(put.get("mark_price") or 0.0)
+
+            entry_cost_ask = (ask_call + ask_put) * s_now * qty
+            entry_cost_mid = (mid_call + mid_put) * s_now * qty
+            entry_cost_mark = (mark_call + mark_put) * s_now * qty
+
+            trade = {
+                "id": f"bot-{_now_ms()}",
+                "src": "BOT",
+                "currency": cur,
+                "expiry": expiry_exec,
+                "expiries_used": expiries,
+                "strike": float(k0),
+                "qty": qty,
+                "entry_ts": _now_ms(),
+                "entry_spot": float(s_now),
+                "entry_spot_index": s_index,
+                "entry_spot_last": s_last,
+                "callName": call_name,
+                "putName": put_name,
+                "entry_cost_usd": float(entry_cost_ask),
+                "entry_cost_ask": float(entry_cost_ask),
+                "entry_cost_mid": float(entry_cost_mid),
+                "entry_cost_mark": float(entry_cost_mark),
+                "entry_call": {"bid": float(call.get("bid_price") or 0.0), "ask": ask_call, "mark": mark_call, "iv": float(call.get("mark_iv") or 0.0)},
+                "entry_put": {"bid": float(put.get("bid_price") or 0.0), "ask": ask_put, "mark": mark_put, "iv": float(put.get("mark_iv") or 0.0)},
+            }
+            _PAPER["open"] = [trade]
+            _BOT["last_action_ms"] = _now_ms()
+            _paper_save()
+
+        except Exception:
+            # keep bot alive
+            continue
+
+
+@app.on_event("startup")
+async def _startup():
+    global _BOT_TASK
+    _paper_load()
+    if not _BOT_TASK:
+        _BOT_TASK = asyncio.create_task(_bot_loop())
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    global _BOT_TASK
+    try:
+        _paper_save()
+    except Exception:
+        pass
+    if _BOT_TASK:
+        try:
+            _BOT_TASK.cancel()
+        except Exception:
+            pass
+    _BOT_TASK = None
