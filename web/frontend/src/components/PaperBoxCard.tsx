@@ -13,12 +13,15 @@ type PaperTrade = {
   ts: number;
   expiry: string;
   strike: number;
-  spot: number;
+  spot: number; // entry spot
   targetPct: number;
   pricing: 'MARK' | 'MID';
   // instruments (for real-time MTM)
   callName: string;
   putName: string;
+  // entry snapshot (from chain row)
+  callEntry?: { bid?: number; ask?: number; mark?: number; iv?: number; oi?: number };
+  putEntry?: { bid?: number; ask?: number; mark?: number; iv?: number; oi?: number };
   callPremUsd: number;
   putPremUsd: number;
   totalCostUsd: number;
@@ -85,7 +88,7 @@ export default function PaperBoxCard({
   const [slUsd, setSlUsd] = useState<number>(150);
   const [trades, setTrades] = useState<PaperTrade[]>([]);
 
-  const [mtm, setMtm] = useState<Record<string, { ts: number; valueUsd: number; pnlUsd: number }>>({});
+  const [mtm, setMtm] = useState<Record<string, { ts: number; valueUsd: number; pnlUsd: number; callT?: any; putT?: any; spot?: number }>>({});
   const [mtmErr, setMtmErr] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mtmAgeSec, setMtmAgeSec] = useState<number | null>(null);
@@ -151,6 +154,20 @@ export default function PaperBoxCard({
       pricing,
       callName,
       putName,
+      callEntry: {
+        bid: Number(selected.call?.bid_price || 0) || undefined,
+        ask: Number(selected.call?.ask_price || 0) || undefined,
+        mark: Number(selected.call?.mark_price || 0) || undefined,
+        iv: Number(selected.call?.mark_iv || 0) || undefined,
+        oi: Number(selected.call?.open_interest || 0) || undefined,
+      },
+      putEntry: {
+        bid: Number(selected.put?.bid_price || 0) || undefined,
+        ask: Number(selected.put?.ask_price || 0) || undefined,
+        mark: Number(selected.put?.mark_price || 0) || undefined,
+        iv: Number(selected.put?.mark_iv || 0) || undefined,
+        oi: Number(selected.put?.open_interest || 0) || undefined,
+      },
       callPremUsd: callPrem,
       putPremUsd: putPrem,
       totalCostUsd: total,
@@ -219,7 +236,7 @@ export default function PaperBoxCard({
       try {
         setMtmErr(null);
         const sp = Number(spot || 0);
-        const next: Record<string, { ts: number; valueUsd: number; pnlUsd: number }> = {};
+        const next: Record<string, { ts: number; valueUsd: number; pnlUsd: number; callT?: any; putT?: any; spot?: number }> = {};
 
         // Limit per tick to avoid spam (demo). Most times you have few open trades.
         const list = openTrades.slice(0, 8);
@@ -233,7 +250,7 @@ export default function PaperBoxCard({
           const putUsd = premUsdFromTicker(p.ticker, sp, t.pricing);
           const valueUsd = callUsd + putUsd;
           const pnlUsd = valueUsd - Number(t.totalCostUsd || 0);
-          next[t.id] = { ts: Date.now(), valueUsd, pnlUsd };
+          next[t.id] = { ts: Date.now(), valueUsd, pnlUsd, callT: c?.ticker, putT: p?.ticker, spot: sp };
         }
 
         if (!alive) return;
@@ -372,14 +389,14 @@ export default function PaperBoxCard({
           </div>
           <div className="mt-2 grid grid-cols-3 gap-2">
             <div>
-              <div className="text-[11px] text-slate-400">Custo</div>
+              <div className="text-[11px] text-slate-400">Custo (entrada)</div>
               <div className="text-sm font-semibold">${Number(activeTrade.totalCostUsd || 0).toFixed(2)}</div>
-              <div className="text-[11px] text-slate-500">{activeTrade.pricing}</div>
+              <div className="text-[11px] text-slate-500">spot entrada: {Number(activeTrade.spot || 0).toFixed(0)}</div>
             </div>
             <div>
-              <div className="text-[11px] text-slate-400">Valor atual</div>
+              <div className="text-[11px] text-slate-400">Valor atual (a mercado)</div>
               <div className="text-sm font-semibold">{mtm[activeTrade.id]?.valueUsd != null ? `$${Number(mtm[activeTrade.id].valueUsd).toFixed(2)}` : '—'}</div>
-              <div className="text-[11px] text-slate-500">spot: {Number(spot || 0).toFixed(0)}</div>
+              <div className="text-[11px] text-slate-500">spot agora: {Number(mtm[activeTrade.id]?.spot ?? spot ?? 0).toFixed(0)}</div>
             </div>
             <div>
               <div className="text-[11px] text-slate-400">PnL (MTM)</div>
@@ -388,7 +405,24 @@ export default function PaperBoxCard({
                 const cls = p == null ? 'text-slate-500' : p >= 0 ? 'text-emerald-300' : 'text-rose-300';
                 return <div className={`text-lg font-bold ${cls}`}>{p == null ? '—' : `${p >= 0 ? '+' : ''}${Number(p).toFixed(2)}`}</div>;
               })()}
-              <div className="text-[11px] text-slate-500">expiry: {activeTrade.expiry}</div>
+              <div className="text-[11px] text-slate-500">pricing: {activeTrade.pricing} | expiry: {activeTrade.expiry}</div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+            <div className="bg-slate-900/30 border border-slate-800 rounded-lg p-2">
+              <div className="font-semibold text-slate-200">CALL</div>
+              <div className="text-slate-500 break-all">{activeTrade.callName}</div>
+              <div className="mt-1 text-slate-400">Entrada: bid {activeTrade.callEntry?.bid ?? '—'} / ask {activeTrade.callEntry?.ask ?? '—'} / mark {activeTrade.callEntry?.mark ?? '—'}</div>
+              <div className="text-slate-500">IV {activeTrade.callEntry?.iv ?? '—'} | OI {activeTrade.callEntry?.oi ?? '—'}</div>
+              <div className="mt-1 text-slate-200">Agora: bid {mtm[activeTrade.id]?.callT?.best_bid_price ?? '—'} / ask {mtm[activeTrade.id]?.callT?.best_ask_price ?? '—'} / mark {mtm[activeTrade.id]?.callT?.mark_price ?? '—'}</div>
+            </div>
+            <div className="bg-slate-900/30 border border-slate-800 rounded-lg p-2">
+              <div className="font-semibold text-slate-200">PUT</div>
+              <div className="text-slate-500 break-all">{activeTrade.putName}</div>
+              <div className="mt-1 text-slate-400">Entrada: bid {activeTrade.putEntry?.bid ?? '—'} / ask {activeTrade.putEntry?.ask ?? '—'} / mark {activeTrade.putEntry?.mark ?? '—'}</div>
+              <div className="text-slate-500">IV {activeTrade.putEntry?.iv ?? '—'} | OI {activeTrade.putEntry?.oi ?? '—'}</div>
+              <div className="mt-1 text-slate-200">Agora: bid {mtm[activeTrade.id]?.putT?.best_bid_price ?? '—'} / ask {mtm[activeTrade.id]?.putT?.best_ask_price ?? '—'} / mark {mtm[activeTrade.id]?.putT?.mark_price ?? '—'}</div>
             </div>
           </div>
         </div>

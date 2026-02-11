@@ -60,6 +60,8 @@ export default function DeskPage() {
   ]);
   const [gexLevels, setGexLevels] = useState<{ strike: number; gex: number }[]>([]);
   const [wallsN, setWallsN] = useState<number>(18);
+  const [gexExpSel, setGexExpSel] = useState<string[]>([]); // explicit expiries selection for GEX ALL
+  const [gexAudit, setGexAudit] = useState<string>('');
   const [flip, setFlip] = useState<number | null>(null);
   const [selectedStrike, setSelectedStrike] = useState<number | null>(null);
   const [planTargetPct, setPlanTargetPct] = useState<number>(1.5);
@@ -101,6 +103,12 @@ export default function DeskPage() {
       const ex = await apiGet(`/api/desk/expiries?currency=${instrument.startsWith('ETH') ? 'ETH' : 'BTC'}`);
       const exs = (ex.expiries || []) as string[];
       setExpiries(exs);
+
+      // Default explicit expiries selection for GEX ALL: first 2 (D1/D2) if empty.
+      if (!gexExpSel.length && exs.length) {
+        setGexExpSel(exs.slice(0, 2));
+      }
+
       const chosen = expiry || exs[0] || '';
       setExpiry(chosen);
       if (chosen) {
@@ -123,13 +131,14 @@ export default function DeskPage() {
               setBootPct(85);
             }
             const ranges = (gexRanges || []).filter((r) => r.on).map((r) => `${r.a}-${r.b}`).join(',');
-            const all = await apiGet(`/api/desk/walls?currency=${currency}&mode=all&strike_range_pct=${encodeURIComponent(String(Math.max(8, strikeRangePct)))}&max_expiries=${encodeURIComponent(String(gexN || 0))}&min_dte_days=${encodeURIComponent(String(gexMinDte || 0))}&max_dte_days=${encodeURIComponent(String(gexMaxDte || 9999))}&dte_ranges=${encodeURIComponent(ranges)}`);
+            const expCsv = (gexExpSel || []).join(',');
+            const all = await apiGet(
+              `/api/desk/walls?currency=${currency}&mode=all&strike_range_pct=${encodeURIComponent(String(Math.max(8, strikeRangePct)))}&max_expiries=${encodeURIComponent(String(gexN || 0))}&min_dte_days=${encodeURIComponent(String(gexMinDte || 0))}&max_dte_days=${encodeURIComponent(String(gexMaxDte || 9999))}&dte_ranges=${encodeURIComponent(ranges)}&expiries_csv=${encodeURIComponent(expCsv)}`
+            );
             setGexLevels((all.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
             setWallsN((all.walls || []).length || 18);
-            // show audit info
-            try {
-              setOptErr(null);
-            } catch {}
+            setGexAudit(`expiries_used=${(all.expiries_used_n ?? (all.expiries_used?.length ?? '—'))} | dte_ranges=${all.dte_ranges || ''} | max_expiries=${all.max_expiries || ''}`);
+            setOptErr(null);
           } else {
             setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
             setWallsN((cg.walls || []).length || 18);
@@ -360,6 +369,59 @@ export default function DeskPage() {
                           </div>
 
                           <div className="col-span-2">
+                            <div className="text-[10px] text-slate-400">Vencimentos no cálculo (checkbox)</div>
+                            <div className="mt-1 flex gap-2">
+                              <button
+                                className="text-[11px] bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1 hover:border-slate-600"
+                                onClick={() => setGexExpSel(expiries.slice(0, 2))}
+                                type="button"
+                              >
+                                D1/D2
+                              </button>
+                              <button
+                                className="text-[11px] bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1 hover:border-slate-600"
+                                onClick={() => setGexExpSel(expiries.slice(0, Math.max(1, gexN || 24)))}
+                                type="button"
+                              >
+                                Top N
+                              </button>
+                              <button
+                                className="text-[11px] bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1 hover:border-slate-600"
+                                onClick={() => setGexExpSel([])}
+                                type="button"
+                                title="Limpa seleção explícita (volta a usar filtros max_expiries + DTE)"
+                              >
+                                Usar filtros
+                              </button>
+                            </div>
+
+                            <div className="mt-2 max-h-[140px] overflow-auto border border-slate-800 rounded-xl p-2 bg-slate-950/20">
+                              <div className="grid grid-cols-2 gap-2">
+                                {expiries.slice(0, 30).map((e) => {
+                                  const on = gexExpSel.includes(e);
+                                  return (
+                                    <label key={e} className="flex items-center gap-2 text-[11px] text-slate-200">
+                                      <input
+                                        type="checkbox"
+                                        checked={on}
+                                        onChange={(ev) => {
+                                          const ck = ev.target.checked;
+                                          if (ck) setGexExpSel(Array.from(new Set([...gexExpSel, e])));
+                                          else setGexExpSel(gexExpSel.filter((x) => x !== e));
+                                        }}
+                                      />
+                                      {e}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <div className="mt-1 text-[10px] text-slate-500">
+                                Selecionados: <span className="text-slate-200 font-semibold">{gexExpSel.length || 0}</span> (se &gt; 0, sobrescreve os filtros DTE/max_expiries)
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="col-span-2">
                             <div className="text-[10px] text-slate-400">Buckets (checkbox)</div>
                             <div className="mt-1 grid grid-cols-3 gap-2">
                               {gexRanges.map((rr) => (
@@ -377,6 +439,7 @@ export default function DeskPage() {
                               ))}
                             </div>
                             <div className="mt-1 text-[10px] text-slate-500">Marque e clique em Aplicar para recalcular</div>
+                            {gexAudit ? <div className="mt-1 text-[10px] text-slate-500">{gexAudit}</div> : null}
                           </div>
 
                           <div className="flex items-end">
@@ -689,6 +752,59 @@ export default function DeskPage() {
                                 </div>
 
                                 <div className="col-span-2">
+                                  <div className="text-[10px] text-slate-400">Vencimentos no cálculo (checkbox)</div>
+                                  <div className="mt-1 flex gap-2">
+                                    <button
+                                      className="text-[11px] bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1 hover:border-slate-600"
+                                      onClick={() => setGexExpSel(expiries.slice(0, 2))}
+                                      type="button"
+                                    >
+                                      D1/D2
+                                    </button>
+                                    <button
+                                      className="text-[11px] bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1 hover:border-slate-600"
+                                      onClick={() => setGexExpSel(expiries.slice(0, Math.max(1, gexN || 24)))}
+                                      type="button"
+                                    >
+                                      Top N
+                                    </button>
+                                    <button
+                                      className="text-[11px] bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1 hover:border-slate-600"
+                                      onClick={() => setGexExpSel([])}
+                                      type="button"
+                                      title="Limpa seleção explícita (volta a usar filtros max_expiries + DTE)"
+                                    >
+                                      Usar filtros
+                                    </button>
+                                  </div>
+
+                                  <div className="mt-2 max-h-[140px] overflow-auto border border-slate-800 rounded-xl p-2 bg-slate-950/20">
+                                    <div className="grid grid-cols-2 gap-2">
+                                      {expiries.slice(0, 30).map((e) => {
+                                        const on = gexExpSel.includes(e);
+                                        return (
+                                          <label key={e} className="flex items-center gap-2 text-[11px] text-slate-200">
+                                            <input
+                                              type="checkbox"
+                                              checked={on}
+                                              onChange={(ev) => {
+                                                const ck = ev.target.checked;
+                                                if (ck) setGexExpSel(Array.from(new Set([...gexExpSel, e])));
+                                                else setGexExpSel(gexExpSel.filter((x) => x !== e));
+                                              }}
+                                            />
+                                            {e}
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                    <div className="mt-1 text-[10px] text-slate-500">
+                                      Selecionados: <span className="text-slate-200 font-semibold">{gexExpSel.length || 0}</span> (se &gt; 0, sobrescreve os filtros DTE/max_expiries)
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="col-span-2">
                                   <div className="text-[10px] text-slate-400">Buckets (checkbox)</div>
                                   <div className="mt-1 grid grid-cols-3 gap-2">
                                     {gexRanges.map((r) => (
@@ -706,6 +822,7 @@ export default function DeskPage() {
                                     ))}
                                   </div>
                                   <div className="mt-1 text-[10px] text-slate-500">Marque e clique em Aplicar para recalcular</div>
+                                  {gexAudit ? <div className="mt-1 text-[10px] text-slate-500">{gexAudit}</div> : null}
                                 </div>
 
                                 <div className="flex items-end">
