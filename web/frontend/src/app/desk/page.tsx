@@ -529,7 +529,7 @@ export default function DeskPage() {
                     bestD = d;
                   }
                 }
-                setSelectedStrike(best.strike);
+                setSelectedStrike((prev) => (Number(prev) === Number(best.strike) ? null : best.strike));
               }}
             />
           </div>
@@ -553,7 +553,7 @@ export default function DeskPage() {
                     <tr
                       key={rr.strike}
                       className={`border-b border-slate-900 hover:bg-slate-900/40 cursor-pointer ${selectedStrike === rr.strike ? 'bg-slate-900/50' : ''}`}
-                      onClick={() => setSelectedStrike(Number(rr.strike))}
+                      onClick={() => setSelectedStrike((prev) => (Number(prev) === Number(rr.strike) ? null : Number(rr.strike)))}
                     >
                       <td className="p-2 text-slate-200">
                         {rr.call?.bid_price ?? '—'} / {rr.call?.ask_price ?? '—'} · {rr.call?.mark_iv ?? '—'} · {rr.call?.open_interest ?? '—'}
@@ -611,7 +611,7 @@ export default function DeskPage() {
                       <button
                         key={lv.strike}
                         className={`text-xs bg-slate-950/40 border border-slate-800 rounded px-2 py-1 hover:border-slate-600 ${selectedStrike === s ? 'border-blue-500/60' : ''}`}
-                        onClick={() => setSelectedStrike(s)}
+                        onClick={() => setSelectedStrike((prev) => (Number(prev) === Number(s) ? null : s))}
                         title={`rank #${idx + 1} |gex|=${Math.abs(g).toFixed(2)} dist=${d.toFixed(2)}%`}
                       >
                         <div className="flex items-center justify-between">
