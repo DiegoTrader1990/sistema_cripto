@@ -563,7 +563,7 @@ def desk_ticker(instrument: str, user: dict = Depends(get_user)):
 
 
 @app.get("/api/desk/walls")
-def desk_walls(currency: str = "BTC", mode: str = "expiry", expiry: str = "", strike_range_pct: float = 12.0, max_expiries: int = 0, min_dte_days: float = 0.0, max_dte_days: float = 9999.0, dte_ranges: str = "", user: dict = Depends(get_user)):
+def desk_walls(currency: str = "BTC", mode: str = "expiry", expiry: str = "", strike_range_pct: float = 12.0, max_expiries: int = 0, min_dte_days: float = 0.0, max_dte_days: float = 9999.0, dte_ranges: str = "", expiries_csv: str = "", user: dict = Depends(get_user)):
     """Return ranked walls.
 
     mode:
@@ -591,22 +591,42 @@ def desk_walls(currency: str = "BTC", mode: str = "expiry", expiry: str = "", st
         return {"ok": True, "currency": currency, "mode": "expiry", "expiry": ch.get("expiry"), "spot": ch.get("spot"), "flip": ch.get("flip"), "regime": ch.get("regime"), "walls": ch.get("walls")}
 
     # aggregated across expiries (cached)
-    cache_key = f"walls:{currency}:all:{int(strike_range_pct)}:{int(max_expiries or 0)}:{float(min_dte_days)}:{float(max_dte_days)}:{dte_ranges}"
+    exp_key = (expiries_csv or "").strip()
+    cache_key = f"walls:{currency}:all:{int(strike_range_pct)}:{int(max_expiries or 0)}:{float(min_dte_days)}:{float(max_dte_days)}:{dte_ranges}:exp={exp_key}"
     cached = _cache_get(cache_key)
     if cached:
         return cached
 
     inst = deribit_get("/public/get_instruments", {"currency": currency, "kind": "option", "expired": "false"}) or []
-    expiries = sorted({_expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0)) for x in inst if x.get("expiration_timestamp")})
-    expiries = [e for e in expiries if e]
+    expiries_all = sorted({_expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0)) for x in inst if x.get("expiration_timestamp")})
+    expiries_all = [e for e in expiries_all if e]
+
+    # Optional explicit expiries selection (comma-separated YYYY-MM-DD). If present, it overrides max_expiries + dte filters.
+    exp_sel: list[str] = []
+    try:
+        s = (expiries_csv or "").strip()
+        if s:
+            for part in s.split(","):
+                p = part.strip()
+                if p:
+                    exp_sel.append(p)
+    except Exception:
+        exp_sel = []
+
+    expiries = expiries_all
+    if exp_sel:
+        # keep order as provided by user, only if exists
+        exp_set = set(expiries_all)
+        expiries = [e for e in exp_sel if e in exp_set]
 
     # safety cap (can be overridden)
-    if max_expiries and int(max_expiries) > 0:
-        expiries = expiries[: max(1, min(120, int(max_expiries)))]
-    else:
-        expiries = expiries[:24]
+    if not exp_sel:
+        if max_expiries and int(max_expiries) > 0:
+            expiries = expiries[: max(1, min(120, int(max_expiries)))]
+        else:
+            expiries = expiries[:24]
 
-    # DTE filter
+    # DTE filter (only when not explicitly selecting expiries)
     now_ms = int(time.time() * 1000)
 
     ranges: list[tuple[int, int]] = []
@@ -629,26 +649,27 @@ def desk_walls(currency: str = "BTC", mode: str = "expiry", expiry: str = "", st
     if not ranges:
         ranges = [(int(float(min_dte_days)), int(float(max_dte_days)))]
 
-    exp_set: set[str] = set()
-    for x in inst:
-        try:
-            ex = _expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0))
-            ts = int(x.get("expiration_timestamp") or 0)
-            if not ex:
+    if not exp_sel:
+        exp_set: set[str] = set()
+        for x in inst:
+            try:
+                ex = _expiry_str_from_ts_ms(int(x.get("expiration_timestamp") or 0))
+                ts = int(x.get("expiration_timestamp") or 0)
+                if not ex:
+                    continue
+                dte = int(round((ts - now_ms) / (24 * 3600 * 1000)))
+                ok = False
+                for a, b in ranges:
+                    if dte >= a and dte <= b:
+                        ok = True
+                        break
+                if not ok:
+                    continue
+                exp_set.add(ex)
+            except Exception:
                 continue
-            dte = int(round((ts - now_ms) / (24 * 3600 * 1000)))
-            ok = False
-            for a, b in ranges:
-                if dte >= a and dte <= b:
-                    ok = True
-                    break
-            if not ok:
-                continue
-            exp_set.add(ex)
-        except Exception:
-            continue
 
-    expiries = [e for e in expiries if e in exp_set]
+        expiries = [e for e in expiries if e in exp_set]
 
     # range filter by strike around spot
     lo = hi = None
@@ -730,7 +751,8 @@ def desk_walls(currency: str = "BTC", mode: str = "expiry", expiry: str = "", st
         "flip": flip,
         "regime": regime_text(strike_net, flip=flip),
         "walls": [{"strike": k, "gex": v} for (k, v) in walls],
-        "expiries_used": len(expiries),
+        "expiries_used": expiries,
+        "expiries_used_n": len(expiries),
         "max_expiries": int(max_expiries or 0),
         "min_dte_days": float(min_dte_days),
         "max_dte_days": float(max_dte_days),
