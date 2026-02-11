@@ -88,6 +88,7 @@ export default function PaperBoxCard({
   const [mtm, setMtm] = useState<Record<string, { ts: number; valueUsd: number; pnlUsd: number }>>({});
   const [mtmErr, setMtmErr] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [mtmAgeSec, setMtmAgeSec] = useState<number | null>(null);
 
   useEffect(() => {
     try {
@@ -236,7 +237,13 @@ export default function PaperBoxCard({
         }
 
         if (!alive) return;
+        const now = Date.now();
         setMtm((prev) => ({ ...prev, ...next }));
+
+        // age = newest mtm timestamp among open trades
+        let newest = 0;
+        for (const id of Object.keys(next)) newest = Math.max(newest, next[id].ts);
+        if (newest) setMtmAgeSec((now - newest) / 1000);
       } catch (e: any) {
         if (!alive) return;
         setMtmErr(String(e?.message || e));
@@ -250,7 +257,7 @@ export default function PaperBoxCard({
       if (timer) clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openTrades.length, spot]);
+  }, [openTrades, spot]);
 
   // Auto TP/SL (closes using MTM value)
   useEffect(() => {
@@ -354,6 +361,39 @@ export default function PaperBoxCard({
         </div>
       </div>
 
+      {activeTrade && !activeTrade.closedTs ? (
+        <div className="mt-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <div className="text-xs font-semibold">EM POSIÇÃO</div>
+              <div className="text-[11px] text-slate-500 break-all">{activeTrade.callName} + {activeTrade.putName}</div>
+            </div>
+            <div className="text-[11px] text-slate-500">mtm age: {mtmAgeSec == null ? '—' : `${mtmAgeSec.toFixed(1)}s`}</div>
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            <div>
+              <div className="text-[11px] text-slate-400">Custo</div>
+              <div className="text-sm font-semibold">${Number(activeTrade.totalCostUsd || 0).toFixed(2)}</div>
+              <div className="text-[11px] text-slate-500">{activeTrade.pricing}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-400">Valor atual</div>
+              <div className="text-sm font-semibold">{mtm[activeTrade.id]?.valueUsd != null ? `$${Number(mtm[activeTrade.id].valueUsd).toFixed(2)}` : '—'}</div>
+              <div className="text-[11px] text-slate-500">spot: {Number(spot || 0).toFixed(0)}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-slate-400">PnL (MTM)</div>
+              {(() => {
+                const p = mtm[activeTrade.id]?.pnlUsd;
+                const cls = p == null ? 'text-slate-500' : p >= 0 ? 'text-emerald-300' : 'text-rose-300';
+                return <div className={`text-lg font-bold ${cls}`}>{p == null ? '—' : `${p >= 0 ? '+' : ''}${Number(p).toFixed(2)}`}</div>;
+              })()}
+              <div className="text-[11px] text-slate-500">expiry: {activeTrade.expiry}</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-3 grid grid-cols-2 gap-2">
         <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
           <div className="text-[11px] text-slate-400">Equity (realizado)</div>
@@ -369,6 +409,9 @@ export default function PaperBoxCard({
           >
             Entrar (paper)
           </button>
+          {!selected?.call?.instrument_name || !selected?.put?.instrument_name ? (
+            <div className="mt-2 text-[11px] text-amber-300">Sem instrument_name para CALL/PUT (não dá pra MTM). Selecione outro strike/expiry.</div>
+          ) : null}
           <div className="mt-2 flex items-center justify-between gap-2">
             <button
               className="w-full rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 disabled:opacity-60 px-3 py-2 text-xs font-semibold"

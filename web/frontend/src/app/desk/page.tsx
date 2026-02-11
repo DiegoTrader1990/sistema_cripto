@@ -126,6 +126,10 @@ export default function DeskPage() {
             const all = await apiGet(`/api/desk/walls?currency=${currency}&mode=all&strike_range_pct=${encodeURIComponent(String(Math.max(8, strikeRangePct)))}&max_expiries=${encodeURIComponent(String(gexN || 0))}&min_dte_days=${encodeURIComponent(String(gexMinDte || 0))}&max_dte_days=${encodeURIComponent(String(gexMaxDte || 9999))}&dte_ranges=${encodeURIComponent(ranges)}`);
             setGexLevels((all.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
             setWallsN((all.walls || []).length || 18);
+            // show audit info
+            try {
+              setOptErr(null);
+            } catch {}
           } else {
             setGexLevels((cg.walls || []).map((w: any) => ({ strike: Number(w.strike), gex: Number(w.gex) })));
             setWallsN((cg.walls || []).length || 18);

@@ -101,14 +101,18 @@ export default function CandlesChart({
     chart.applyOptions({ width: Math.floor(width), height: Math.floor(height) });
 
     // Some layouts (grid/resize) finalize after paint; apply size again to avoid "stuck" interactions.
-    setTimeout(() => {
+    const reapply = () => {
       try {
         const { width: w2, height: h2 } = el.getBoundingClientRect();
         chart.applyOptions({ width: Math.floor(w2), height: Math.floor(h2) });
       } catch {
         // ignore
       }
-    }, 120);
+    };
+
+    setTimeout(reapply, 120);
+    // also reapply after first user interaction edge-cases
+    setTimeout(reapply, 450);
 
     return () => ro.disconnect();
   }, []);
