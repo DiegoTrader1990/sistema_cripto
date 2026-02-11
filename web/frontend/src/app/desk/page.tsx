@@ -407,7 +407,8 @@ export default function DeskPage() {
                                 const alpha = 0.35 + 0.55 * strength;
                                 const gShort = Math.abs(g) >= 1e6 ? `${(g / 1e6).toFixed(1)}M` : Math.abs(g) >= 1e3 ? `${(g / 1e3).toFixed(1)}k` : g.toFixed(0);
                                 const w = 1 + Math.round(4 * strength);
-                                return { price: s, label: `#${idx + 1} ${tag} ${gShort}`.trim(), color: `rgba(168, 85, 247, ${alpha.toFixed(2)})`, width: w };
+                                const style = strength < 0.35 ? 2 : 0; // dashed for weak walls
+                                return { price: s, label: `#${idx + 1} ${tag} ${gShort}`.trim(), color: `rgba(168, 85, 247, ${alpha.toFixed(2)})`, width: w, style };
                               }),
                           ]
                         : []

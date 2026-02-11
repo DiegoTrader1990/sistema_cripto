@@ -22,7 +22,7 @@ function toCandles(ohlc: Ohlc) {
   return out;
 }
 
-export type GexLevel = { price: number; label?: string; color?: string; width?: number };
+export type GexLevel = { price: number; label?: string; color?: string; width?: number; style?: number };
 
 export default function CandlesChart({
   ohlc,
@@ -168,7 +168,7 @@ export default function CandlesChart({
           price: Number(lv.price),
           color: lv.color || 'rgba(99, 102, 241, 0.85)',
           lineWidth: Math.max(1, Math.min(6, Number(lv.width || 2))),
-          lineStyle: 0,
+          lineStyle: typeof lv.style === 'number' ? lv.style : 0,
           axisLabelVisible: true,
           title: lv.label || '',
         });
@@ -198,6 +198,8 @@ export default function CandlesChart({
           const ls = chart.addLineSeries({
             color: lv.color || 'rgba(99, 102, 241, 0.85)',
             lineWidth: Math.max(1, Math.min(6, Number(lv.width || 2))),
+            // @ts-ignore
+            lineStyle: typeof lv.style === 'number' ? lv.style : 0,
             priceLineVisible: false,
             lastValueVisible: false,
           });
