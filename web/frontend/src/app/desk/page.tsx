@@ -183,6 +183,15 @@ export default function DeskPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instrument, tf, candles]);
 
+  // ESC closes config panel
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setChartCfgOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   useEffect(() => {
     const calc = () => {
       const w = window.innerWidth || 1200;
@@ -196,14 +205,16 @@ export default function DeskPage() {
   }, []);
 
   useEffect(() => {
+    // When config panel is open, pause live refresh so the UI doesn't "fight" touch/click.
     if (!liveOn) return;
+    if (chartCfgOpen) return;
     const ms = Math.max(3000, Math.min(60000, Number(liveSec || 8) * 1000));
     const t = setInterval(() => {
       refresh();
     }, ms);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveOn, liveSec, instrument, tf, candles, expiry, gexOn]);
+  }, [liveOn, liveSec, instrument, tf, candles, expiry, gexOn, chartCfgOpen]);
 
   const last = useMemo(() => {
     if (!ohlc?.c?.length) return null;
@@ -293,7 +304,9 @@ export default function DeskPage() {
               </button>
 
               {chartCfgOpen ? (
-                <div className="fixed left-6 top-20 z-[80] bg-slate-950/85 backdrop-blur border border-slate-800 rounded-2xl px-3 py-3 shadow-[0_0_0_1px_rgba(148,163,184,0.06)] w-[min(560px,92vw)] max-h-[74vh] overflow-auto">
+                <>
+                  <div className="fixed inset-0 z-[79] bg-black/40" onClick={() => setChartCfgOpen(false)} />
+                  <div className="fixed left-6 top-20 z-[80] bg-slate-950/90 backdrop-blur border border-slate-800 rounded-2xl px-3 py-3 shadow-[0_0_0_1px_rgba(148,163,184,0.06)] w-[min(560px,92vw)] max-h-[74vh] overflow-auto">
                   <div className="flex items-center justify-between">
                     <div className="text-xs font-semibold text-slate-200">Configurações</div>
                     <button className="text-xs text-slate-400 hover:text-slate-200" onClick={() => setChartCfgOpen(false)}>
