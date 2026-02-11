@@ -124,13 +124,21 @@ export default function CandlesChart({
 
     // Preserve the user's current viewport to avoid "jumping" candles on refresh.
     // Only auto-fit once on the initial load.
-    let vr: any = null;
+    let logical: any = null;
+    let rightOffset: number | null = null;
     try {
+      // Prefer logical range (more stable across updates)
       // @ts-ignore
-      vr = chart.timeScale().getVisibleRange?.() || null;
+      logical = chart.timeScale().getVisibleLogicalRange?.() || null;
+      // @ts-ignore
+      rightOffset = typeof chart.timeScale().getRightOffset === 'function' ? Number(chart.timeScale().getRightOffset()) : null;
     } catch {
-      vr = null;
+      logical = null;
+      rightOffset = null;
     }
+
+    // Heuristic: if user is at the right edge, keep following real-time; otherwise preserve the manual viewport.
+    const followRealTime = rightOffset != null && rightOffset <= 2;
 
     series.setData(data);
 
@@ -140,10 +148,19 @@ export default function CandlesChart({
       return;
     }
 
-    if (vr) {
+    if (followRealTime) {
+      try {
+        chart.timeScale().scrollToRealTime();
+        return;
+      } catch {
+        // ignore
+      }
+    }
+
+    if (logical) {
       try {
         // @ts-ignore
-        chart.timeScale().setVisibleRange?.(vr);
+        chart.timeScale().setVisibleLogicalRange?.(logical);
       } catch {
         // ignore
       }
