@@ -312,6 +312,53 @@ def paper_open(user: dict = Depends(get_user)):
     return {"ok": True, "open": _PAPER.get("open") or [], "ts": int(time.time() * 1000)}
 
 
+@app.get("/api/paper/open_enriched")
+def paper_open_enriched(limit: int = 12, user: dict = Depends(get_user)):
+    limit = max(1, min(30, int(limit)))
+    opens = list(_PAPER.get("open") or [])[:limit]
+
+    # spot from perp
+    cur = "BTC"
+    try:
+        if opens and opens[0].get("currency"):
+            cur = str(opens[0].get("currency") or "BTC").upper()
+    except Exception:
+        cur = "BTC"
+    perp = f"{cur}-PERPETUAL"
+    pt, _ = DeribitPublicClient(timeout=6.0).get_ticker(perp)
+    spot = float((pt or {}).get("index_price") or (pt or {}).get("last_price") or 0.0)
+
+    client = DeribitPublicClient(timeout=6.0)
+    out = []
+    for t in opens:
+        try:
+            cn = str(t.get("callName") or "")
+            pn = str(t.get("putName") or "")
+            ct, _ = client.get_ticker(cn) if cn else ({}, 0)
+            pt2, _ = client.get_ticker(pn) if pn else ({}, 0)
+            qty = float(t.get("qty") or 1.0)
+            call_usd = float((ct.get("mark_price") or 0.0)) * spot * qty
+            put_usd = float((pt2.get("mark_price") or 0.0)) * spot * qty
+            value = call_usd + put_usd
+            cost = float(t.get("entry_cost_usd") or 0.0)
+            pnl = value - cost
+            pnl_pct = (pnl / cost * 100.0) if cost else 0.0
+            out.append({
+                **t,
+                "mtm": {
+                    "spot": spot,
+                    "value_usd": value,
+                    "pnl_usd": pnl,
+                    "pnl_pct": pnl_pct,
+                    "ts": _now_ms(),
+                },
+            })
+        except Exception:
+            out.append({**t, "mtm": None})
+
+    return {"ok": True, "open": out, "ts": _now_ms()}
+
+
 @app.get("/api/paper/history")
 def paper_history(limit: int = 500, user: dict = Depends(get_user)):
     limit = max(1, min(2000, int(limit)))
@@ -491,6 +538,8 @@ async def bot_config(req: Request, user: dict = Depends(get_user)):
     _BOT["walls_n"] = int(body.get("walls_n") or _BOT.get("walls_n") or 18)
     _BOT["tp_move_pct"] = float(body.get("tp_move_pct") or _BOT.get("tp_move_pct") or 1.5)
     _BOT["sl_pnl_pct"] = float(body.get("sl_pnl_pct") or _BOT.get("sl_pnl_pct") or -60.0)
+    _BOT["max_positions"] = int(body.get("max_positions") or _BOT.get("max_positions") or 3)
+    _BOT["max_risk_usd"] = float(body.get("max_risk_usd") or _BOT.get("max_risk_usd") or 500.0)
     _BOT["qty"] = float(body.get("qty") or _BOT.get("qty") or 0.0)
     _BOT["spot_src"] = str(body.get("spot_src") or _BOT.get("spot_src") or "index")
     _BOT["last_action_ms"] = int(time.time() * 1000)
@@ -738,6 +787,8 @@ _BOT: dict[str, Any] = {
     "walls_n": 18,
     "tp_move_pct": 1.5,
     "sl_pnl_pct": -60.0,
+    "max_positions": 3,
+    "max_risk_usd": 500.0,
     "qty": 0.0,  # 0 => auto(min lot)
     "spot_src": "index",  # index|last
     "last_spot": None,
@@ -1259,85 +1310,60 @@ async def _bot_loop():
             prev = float(_BOT.get("last_spot") or s_now)
             _BOT["last_spot"] = float(s_now)
 
-            # If we have an open trade, monitor exits/roll
+            # Manage ALL open trades: TP/SL only (no forced close on touching new wall; strategy accumulates)
             opens = list(_PAPER.get("open") or [])
             if opens:
-                # Only manage the most recent open (v1)
-                t = opens[0]
-                entry_spot = float(t.get("entry_spot") or 0.0) or s_now
-                move_pct = abs(s_now / entry_spot - 1.0) * 100.0 if entry_spot else 0.0
+                client = DeribitPublicClient(timeout=6.0)
+                still_open: list[dict] = []
+                for t in opens:
+                    try:
+                        entry_spot = float(t.get("entry_spot") or 0.0) or s_now
+                        move_pct = abs(s_now / entry_spot - 1.0) * 100.0 if entry_spot else 0.0
+                        cn = str(t.get("callName") or "")
+                        pn = str(t.get("putName") or "")
+                        ct = {}
+                        pt2 = {}
+                        if cn:
+                            ct, _ = client.get_ticker(cn)
+                        if pn:
+                            pt2, _ = client.get_ticker(pn)
+                        qty = float(t.get("qty") or 1.0)
+                        call_usd = float((ct.get("mark_price") or 0.0)) * s_now * qty
+                        put_usd = float((pt2.get("mark_price") or 0.0)) * s_now * qty
+                        value = call_usd + put_usd
+                        cost = float(t.get("entry_cost_usd") or 0.0)
+                        pnl = value - cost
+                        pnl_pct = (pnl / cost * 100.0) if cost else 0.0
 
-                # MTM using mark prices
-                try:
-                    cn = str(t.get("callName") or "")
-                    pn = str(t.get("putName") or "")
-                    if cn and pn:
-                        ct, _ = DeribitPublicClient(timeout=6.0).get_ticker(cn)
-                        pt, _ = DeribitPublicClient(timeout=6.0).get_ticker(pn)
-                        # option prices are in underlying units; USD approx = price*spot
-                        call_usd = float((ct.get("mark_price") or 0.0)) * s_now
-                        put_usd = float((pt.get("mark_price") or 0.0)) * s_now
-                        value = (call_usd + put_usd) * float(t.get("qty") or 1.0)
-                    else:
-                        value = 0.0
-                except Exception:
-                    value = 0.0
+                        # Stop
+                        if pnl_pct <= float(_BOT.get("sl_pnl_pct") or -60.0):
+                            t["close_reason"] = "STOP_PNL"
+                            t["closed_ts"] = _now_ms()
+                            t["exit_spot"] = s_now
+                            t["exit_value_usd"] = value
+                            t["pnl_usd"] = pnl
+                            t["pnl_pct"] = pnl_pct
+                            _PAPER.setdefault("history", []).insert(0, t)
+                            continue
 
-                cost = float(t.get("entry_cost_usd") or 0.0)
-                pnl = (value - cost) if (cost and value) else 0.0
-                pnl_pct = (pnl / cost * 100.0) if cost else 0.0
+                        # TP
+                        if move_pct >= float(_BOT.get("tp_move_pct") or 1.5):
+                            t["close_reason"] = "TP_MOVE"
+                            t["closed_ts"] = _now_ms()
+                            t["exit_spot"] = s_now
+                            t["exit_value_usd"] = value
+                            t["pnl_usd"] = pnl
+                            t["pnl_pct"] = pnl_pct
+                            _PAPER.setdefault("history", []).insert(0, t)
+                            continue
 
-                # Stop
-                if pnl_pct <= float(_BOT.get("sl_pnl_pct") or -60.0):
-                    t["close_reason"] = "STOP_PNL"
-                    t["closed_ts"] = _now_ms()
-                    t["exit_spot"] = s_now
-                    t["exit_value_usd"] = value
-                    t["pnl_usd"] = pnl
-                    t["pnl_pct"] = pnl_pct
-                    _PAPER["open"] = []
-                    _PAPER.setdefault("history", []).insert(0, t)
-                    _paper_save()
-                    continue
+                        still_open.append(t)
+                    except Exception:
+                        still_open.append(t)
 
-                # TP
-                if move_pct >= float(_BOT.get("tp_move_pct") or 1.5):
-                    t["close_reason"] = "TP_MOVE"
-                    t["closed_ts"] = _now_ms()
-                    t["exit_spot"] = s_now
-                    t["exit_value_usd"] = value
-                    t["pnl_usd"] = pnl
-                    t["pnl_pct"] = pnl_pct
-                    _PAPER["open"] = []
-                    _PAPER.setdefault("history", []).insert(0, t)
-                    _paper_save()
-                    continue
-
-                # Roll if touched another wall
-                walls = _compute_walls_for_expiries(cur, expiries, float(_BOT.get("strike_range_pct") or 8.0), int(_BOT.get("walls_n") or 18))
-                eps = max(1.0, float(s_now) * 0.00005)
-                touched = [k for k in walls if float(k) != float(t.get("strike") or 0.0) and _touched(prev, s_now, float(k), eps)]
-                if touched:
-                    # close
-                    t["close_reason"] = "ROLL_TOUCH_WALL"
-                    t["closed_ts"] = _now_ms()
-                    t["exit_spot"] = s_now
-                    t["exit_value_usd"] = value
-                    t["pnl_usd"] = pnl
-                    t["pnl_pct"] = pnl_pct
-                    _PAPER["open"] = []
-                    _PAPER.setdefault("history", []).insert(0, t)
-                    _paper_save()
-                    # open new immediately (if auto_entry)
-                    if not _BOT.get("auto_entry"):
-                        continue
-                    # choose closest
-                    k2 = min(touched, key=lambda kk: abs(float(kk) - float(s_now)))
-                    _BOT["last_action_ms"] = _now_ms()
-                    # fall through to entry logic below by setting prev
-                    prev = s_now
-                else:
-                    continue
+                _PAPER["open"] = still_open
+                _PAPER["history"] = (_PAPER.get("history") or [])[:2000]
+                _paper_save()
 
             # Entry
             if not _BOT.get("auto_entry"):
@@ -1354,8 +1380,25 @@ async def _bot_loop():
                 continue
             k0 = min(touched, key=lambda kk: abs(float(kk) - float(s_now)))
 
+            # Risk limits
+            open_list = list(_PAPER.get("open") or [])
+            if len(open_list) >= int(_BOT.get("max_positions") or 3):
+                continue
+            total_risk = 0.0
+            for tt in open_list:
+                try:
+                    total_risk += float(tt.get("entry_cost_usd") or 0.0)
+                except Exception:
+                    pass
+            if total_risk >= float(_BOT.get("max_risk_usd") or 500.0):
+                continue
+
             # choose expiry for execution: nearest in list
             expiry_exec = expiries[0]
+            # Do not re-enter same strike+expiry
+            if any(str(tt.get("expiry")) == expiry_exec and float(tt.get("strike") or 0.0) == float(k0) for tt in open_list):
+                continue
+
             # Resolve instruments from chain
             ch = desk_chain(currency=cur, expiry=expiry_exec, strike_range_pct=float(_BOT.get("strike_range_pct") or 8.0), user={"u": "bot"})
             row = None
@@ -1372,7 +1415,6 @@ async def _bot_loop():
             if not call_name or not put_name:
                 continue
 
-            # qty: for now 1 (min lot already on frontend; we will refine later)
             qty = float(_BOT.get("qty") or 0.0) or 1.0
 
             ask_call = float(call.get("ask_price") or 0.0)
@@ -1385,6 +1427,10 @@ async def _bot_loop():
             entry_cost_ask = (ask_call + ask_put) * s_now * qty
             entry_cost_mid = (mid_call + mid_put) * s_now * qty
             entry_cost_mark = (mark_call + mark_put) * s_now * qty
+
+            # If this trade would exceed max risk, skip
+            if (total_risk + float(entry_cost_ask)) > float(_BOT.get("max_risk_usd") or 500.0):
+                continue
 
             trade = {
                 "id": f"bot-{_now_ms()}",
@@ -1407,7 +1453,7 @@ async def _bot_loop():
                 "entry_call": {"bid": float(call.get("bid_price") or 0.0), "ask": ask_call, "mark": mark_call, "iv": float(call.get("mark_iv") or 0.0)},
                 "entry_put": {"bid": float(put.get("bid_price") or 0.0), "ask": ask_put, "mark": mark_put, "iv": float(put.get("mark_iv") or 0.0)},
             }
-            _PAPER["open"] = [trade]
+            _PAPER["open"] = [trade] + open_list
             _BOT["last_action_ms"] = _now_ms()
             _paper_save()
 

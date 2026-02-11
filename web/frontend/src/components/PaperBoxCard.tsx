@@ -93,6 +93,11 @@ export default function PaperBoxCard({
   const [serverOpen, setServerOpen] = useState<any[]>([]);
   const [serverHist, setServerHist] = useState<any[]>([]);
   const [serverErr, setServerErr] = useState<string | null>(null);
+  const [botStatus, setBotStatus] = useState<any>(null);
+  const [botEnabled, setBotEnabled] = useState<boolean>(false);
+  const [botAuto, setBotAuto] = useState<boolean>(false);
+  const [botMaxPos, setBotMaxPos] = useState<number>(3);
+  const [botMaxRisk, setBotMaxRisk] = useState<number>(500);
 
   const [mtm, setMtm] = useState<Record<string, { ts: number; valueUsd: number; pnlUsd: number; callT?: any; putT?: any; spot?: number }>>({});
   const [mtmErr, setMtmErr] = useState<string | null>(null);
@@ -282,6 +287,35 @@ export default function PaperBoxCard({
     return { closeSpot, gross, pnlUsd };
   }
 
+  async function botToggle(patch: { enabled?: boolean; auto_entry?: boolean }) {
+    const tok = localStorage.getItem('token') || '';
+    const res = await fetch(`${API_BASE}/api/bot/toggle`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'bot toggle failed');
+    setBotStatus(data.bot || null);
+    setBotEnabled(Boolean(data?.bot?.enabled));
+    setBotAuto(Boolean(data?.bot?.auto_entry));
+  }
+
+  async function botSaveLimits() {
+    const tok = localStorage.getItem('token') || '';
+    const res = await fetch(`${API_BASE}/api/bot/config`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        max_positions: botMaxPos,
+        max_risk_usd: botMaxRisk,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || 'bot config failed');
+    setBotStatus(data.bot || null);
+  }
+
   async function closeServerTrade(id: string, reason: string = 'manual') {
     const tok = localStorage.getItem('token') || '';
     const res = await fetch(`${API_BASE}/api/paper/close`, {
@@ -380,10 +414,15 @@ export default function PaperBoxCard({
     async function tick() {
       try {
         setServerErr(null);
-        const [op, hist] = await Promise.all([apiGet('/api/paper/open'), apiGet('/api/paper/history?limit=200')]);
+        const [op, hist, bs] = await Promise.all([apiGet('/api/paper/open'), apiGet('/api/paper/history?limit=200'), apiGet('/api/bot/status')]);
         if (!alive) return;
         setServerOpen(op.open || []);
         setServerHist(hist.history || []);
+        setBotStatus(bs.bot || null);
+        setBotEnabled(Boolean(bs?.bot?.enabled));
+        setBotAuto(Boolean(bs?.bot?.auto_entry));
+        if (typeof bs?.bot?.max_positions === 'number') setBotMaxPos(Number(bs.bot.max_positions));
+        if (typeof bs?.bot?.max_risk_usd === 'number') setBotMaxRisk(Number(bs.bot.max_risk_usd));
       } catch (e: any) {
         if (!alive) return;
         setServerErr(String(e?.message || e));
@@ -670,14 +709,21 @@ export default function PaperBoxCard({
         </div>
         <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
           <div className="text-[11px] text-slate-400">Ações</div>
-          <button
-            className="mt-2 w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 px-3 py-2 text-sm font-semibold"
-            disabled={!selected?.call || !selected?.put || !qty || openServer.length > 0}
-            onClick={simulateEntry}
-          >
-            Entrar (paper)
-          </button>
-          {openServer.length > 0 ? <div className="mt-2 text-[11px] text-slate-500">Já existe posição aberta no servidor (A1). Feche para abrir outra.</div> : null}
+          {(() => {
+            const same = (openServer || []).some((t: any) => String(t.expiry) === String(expiry) && Number(t.strike) === Number(selected?.strike));
+            return (
+              <>
+                <button
+                  className="mt-2 w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 px-3 py-2 text-sm font-semibold"
+                  disabled={!selected?.call || !selected?.put || !qty || same}
+                  onClick={simulateEntry}
+                >
+                  Entrar (paper)
+                </button>
+                {same ? <div className="mt-2 text-[11px] text-slate-500">Já existe posição aberta nesse strike+expiry (A1).</div> : null}
+              </>
+            );
+          })()}
           {!selected?.call?.instrument_name || !selected?.put?.instrument_name ? (
             <div className="mt-2 text-[11px] text-amber-300">Sem instrument_name para CALL/PUT (não dá pra MTM). Selecione outro strike/expiry.</div>
           ) : null}
@@ -691,6 +737,45 @@ export default function PaperBoxCard({
               Fechar posição
             </button>
           </div>
+
+          <div className="mt-3 pt-3 border-t border-slate-800">
+            <div className="text-[11px] text-slate-400">BOT (paper)</div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                className={botEnabled ? 'rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-2 text-xs font-semibold' : 'rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 px-3 py-2 text-xs font-semibold'}
+                onClick={() => botToggle({ enabled: !botEnabled })}
+                type="button"
+              >
+                BOT: {botEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button
+                className={botAuto ? 'rounded-lg bg-blue-600 hover:bg-blue-500 px-3 py-2 text-xs font-semibold' : 'rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 px-3 py-2 text-xs font-semibold'}
+                onClick={() => botToggle({ auto_entry: !botAuto })}
+                type="button"
+                disabled={!botEnabled}
+              >
+                Auto-Entrada: {botAuto ? 'ON' : 'OFF'}
+              </button>
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <div>
+                <div className="text-[10px] text-slate-400">Max posições</div>
+                <input className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2" type="number" min={1} max={20} value={botMaxPos} onChange={(e) => setBotMaxPos(Number(e.target.value || 3))} />
+              </div>
+              <div>
+                <div className="text-[10px] text-slate-400">Max risco (USD)</div>
+                <input className="mt-1 w-full rounded-lg bg-slate-950 border border-slate-800 p-2" type="number" min={50} step={50} value={botMaxRisk} onChange={(e) => setBotMaxRisk(Number(e.target.value || 500))} />
+              </div>
+            </div>
+            <button className="mt-2 w-full rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-600 px-3 py-2 text-xs font-semibold" onClick={botSaveLimits} type="button">
+              Salvar limites
+            </button>
+            <div className="mt-2 text-[11px] text-slate-500">
+              Expiries: {(botStatus?.expiries || []).length ? (botStatus.expiries || []).join(', ') : '—'}
+            </div>
+          </div>
+
           <div className="mt-2 text-[11px] text-slate-500">Clique em uma entrada ativa abaixo para selecionar.</div>
         </div>
       </div>
