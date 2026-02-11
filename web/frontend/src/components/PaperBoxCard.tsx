@@ -124,12 +124,8 @@ export default function PaperBoxCard({
   const openTrades = useMemo(() => trades.filter((t) => !t.closedTs), [trades]);
   const closedTrades = useMemo(() => trades.filter((t) => t.closedTs), [trades]);
 
-  // Ensure we always have an active trade when there are open trades
-  useEffect(() => {
-    if (activeId) return;
-    if (openTrades.length) setActiveId(openTrades[0].id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openTrades.length]);
+  // If there are open trades and nothing is selected, keep it unselected (user might be preparing a new entry).
+  // (We still show the open trades list above.)
 
   const activeTrade = useMemo(() => {
     if (!activeId) return null;
@@ -445,7 +441,7 @@ export default function PaperBoxCard({
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => setActiveId(t.id)}
+                  onClick={() => setActiveId((prev) => (prev === t.id ? null : t.id))}
                   className={`text-left bg-slate-900/30 border ${cls} rounded-lg p-2 hover:border-slate-600 ${activeId === t.id ? 'outline outline-1 outline-blue-500/40' : ''}`}
                   title={t.id}
                 >
@@ -537,6 +533,7 @@ export default function PaperBoxCard({
           <div className="text-lg font-semibold">${equity.toFixed(2)}</div>
           <div className="text-xs text-slate-400">PnL: {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}</div>
           <div className="text-[11px] text-slate-500 mt-1">Alav. efetiva (aprox): {leverage == null ? '—' : leverage.toFixed(2)}x</div>
+          <div className="text-[11px] text-slate-500">Margem (long opções): ≈ prêmio pago (custo)</div>
         </div>
         <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-3">
           <div className="text-[11px] text-slate-400">Ações</div>
