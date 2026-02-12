@@ -20,9 +20,10 @@ export default function GridDeskLayout({ items, hideToolbar }: { items: Item[]; 
   const defaultLayout: Layout[] = useMemo(
     () => [
       { i: 'chart', x: 0, y: 0, w: 7, h: 12 },
-      { i: 'planner', x: 7, y: 0, w: 5, h: 8 },
-      { i: 'paper', x: 7, y: 8, w: 5, h: 7 },
-      { i: 'report', x: 0, y: 12, w: 7, h: 7 },
+      { i: 'details', x: 7, y: 0, w: 5, h: 7 },
+      { i: 'planner', x: 7, y: 7, w: 5, h: 8 },
+      { i: 'paper', x: 0, y: 12, w: 7, h: 7 },
+      { i: 'report', x: 7, y: 15, w: 5, h: 6 },
     ],
     []
   );

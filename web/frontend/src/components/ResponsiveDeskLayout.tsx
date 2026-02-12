@@ -8,14 +8,16 @@ export default function ResponsiveDeskLayout({
   mobileTab,
   setMobileTab,
   chart,
+  details,
   paper,
   planner,
   report,
 }: {
   view: 'DESKTOP' | 'TABLET' | 'MOBILE';
-  mobileTab: 'CHART' | 'PLANNER' | 'PAPER' | 'REPORT';
-  setMobileTab: (t: 'CHART' | 'PLANNER' | 'PAPER' | 'REPORT') => void;
+  mobileTab: 'CHART' | 'DETAILS' | 'PLANNER' | 'PAPER' | 'REPORT';
+  setMobileTab: (t: 'CHART' | 'DETAILS' | 'PLANNER' | 'PAPER' | 'REPORT') => void;
   chart: ReactNode;
+  details: ReactNode;
   paper: ReactNode;
   planner: ReactNode;
   report: ReactNode;
@@ -23,6 +25,7 @@ export default function ResponsiveDeskLayout({
   if (view === 'MOBILE') {
     const tabs: Array<[typeof mobileTab, string]> = [
       ['CHART', 'Chart'],
+      ['DETAILS', 'Details'],
       ['PLANNER', 'Planner'],
       ['PAPER', 'Paper'],
       ['REPORT', 'Report'],
@@ -56,6 +59,7 @@ export default function ResponsiveDeskLayout({
         </div>
 
         {mobileTab === 'CHART' ? <Card title="Chart">{chart}</Card> : null}
+        {mobileTab === 'DETAILS' ? <Card title="Details">{details}</Card> : null}
         {mobileTab === 'PLANNER' ? <Card title="Planner">{planner}</Card> : null}
         {mobileTab === 'PAPER' ? <Card title="Paper">{paper}</Card> : null}
         {mobileTab === 'REPORT' ? <Card title="Report">{report}</Card> : null}
@@ -72,6 +76,13 @@ export default function ResponsiveDeskLayout({
               <div className="text-xs font-semibold">Chart</div>
             </div>
             <div className="p-3">{chart}</div>
+          </div>
+
+          <div className="mt-4 bg-slate-900/40 border border-slate-800 rounded-2xl overflow-hidden">
+            <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
+              <div className="text-xs font-semibold">Details</div>
+            </div>
+            <div className="p-3">{details}</div>
           </div>
 
           <div className="mt-4 bg-slate-900/40 border border-slate-800 rounded-2xl overflow-hidden">
@@ -115,6 +126,7 @@ export default function ResponsiveDeskLayout({
         hideToolbar
         items={[
           { key: 'chart', title: 'Chart (GEX)', node: chart },
+          { key: 'details', title: 'Seleção / Entrada', node: details },
           { key: 'planner', title: 'Dados / Opções + Análise', node: planner },
           { key: 'paper', title: 'Simulação / Bot', node: paper },
           { key: 'report', title: 'Relatório', node: report },

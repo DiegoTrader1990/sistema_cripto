@@ -9,6 +9,7 @@ import ResponsiveDeskLayout from '@/components/ResponsiveDeskLayout';
 import DeskLayoutControls from '@/components/DeskLayoutControls';
 import StrategyPlannerCard from '@/components/StrategyPlannerCard';
 import ReportMiniCard from '@/components/ReportMiniCard';
+import SpotPulseCard from '@/components/SpotPulseCard';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
@@ -41,7 +42,7 @@ export default function DeskPage() {
 
   // responsive
   const [view, setView] = useState<'DESKTOP' | 'TABLET' | 'MOBILE'>('DESKTOP');
-  const [mobileTab, setMobileTab] = useState<'CHART' | 'PLANNER' | 'PAPER' | 'REPORT'>('CHART');
+  const [mobileTab, setMobileTab] = useState<'CHART' | 'DETAILS' | 'PLANNER' | 'PAPER' | 'REPORT'>('CHART');
 
   // options/gex
   const [expiry, setExpiry] = useState<string>('');
@@ -549,6 +550,70 @@ export default function DeskPage() {
           </div>
         );
 
+        const detailsNode = (
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs text-slate-500">Seleção: <span className="text-slate-200 font-semibold">{selectedStrike ?? '—'}</span></div>
+              <button
+                type="button"
+                className="text-xs bg-slate-900/60 border border-slate-800 rounded px-2 py-1 hover:border-slate-600"
+                onClick={() => setSelectedStrike(null)}
+                title="Limpar seleção"
+              >
+                Limpar
+              </button>
+            </div>
+
+            <SpotPulseCard spot={Number(last || 0)} selectedStrike={selectedStrike} flip={flip} targetPct={planTargetPct} />
+
+            <div className="mt-3 text-xs text-slate-500">
+              Clique no gráfico para selecionar o nível GEX mais próximo. Use a lista abaixo para selecionar rápido.
+            </div>
+            {optErr ? <div className="mt-2 text-xs text-amber-400">GEX: {optErr}</div> : null}
+
+            <div className="mt-3">
+              <div className="text-xs text-slate-400">Top walls:</div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {[...gexLevels]
+                  .sort((a, b) => Math.abs(Number(b.gex || 0)) - Math.abs(Number(a.gex || 0)))
+                  .slice(0, 10)
+                  .map((lv, idx) => {
+                    const sp = Number(last || 0);
+                    const s = Number(lv.strike);
+                    const d = sp ? ((s / sp - 1) * 100) : 0;
+                    const g = Number(lv.gex || 0);
+                    const gShort =
+                      Math.abs(g) >= 1e6
+                        ? `${(g / 1e6).toFixed(1)}M`
+                        : Math.abs(g) >= 1e3
+                          ? `${(g / 1e3).toFixed(1)}k`
+                          : g.toFixed(0);
+                    return (
+                      <button
+                        key={lv.strike}
+                        className={`text-xs bg-slate-950/40 border border-slate-800 rounded px-2 py-1 hover:border-slate-600 ${selectedStrike === s ? 'border-blue-500/60' : ''}`}
+                        onClick={() => setSelectedStrike((prev) => (Number(prev) === Number(s) ? null : s))}
+                        title={`rank #${idx + 1} |gex|=${Math.abs(g).toFixed(2)} dist=${d.toFixed(2)}%`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold">#{idx + 1}</span>
+                          <span className="text-slate-300">{s.toFixed(0)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500">
+                          <span>
+                            {d >= 0 ? '+' : ''}
+                            {d.toFixed(2)}%
+                          </span>
+                          <span>{gShort}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        );
+
         const reportNode = (
           <ReportMiniCard currency={instrument.startsWith('ETH') ? 'ETH' : 'BTC'} />
         );
@@ -581,6 +646,7 @@ export default function DeskPage() {
             mobileTab={mobileTab}
             setMobileTab={setMobileTab}
             chart={chartNode}
+            details={detailsNode}
             paper={paperNode}
             planner={plannerNode}
             report={reportNode}
