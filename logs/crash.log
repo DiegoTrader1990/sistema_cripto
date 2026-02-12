@@ -1,0 +1,266 @@
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1195, in _update_cards
+    reg = regime_text(self.strike_net, self.flip)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: regime_text() takes 1 positional argument but 2 were given
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1195, in _update_cards
+    reg = regime_text(self.strike_net, self.flip)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: regime_text() takes 1 positional argument but 2 were given
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 949, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1195, in _update_cards
+    reg = regime_text(self.strike_net, self.flip)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: regime_text() takes 1 positional argument but 2 were given
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1195, in _update_cards
+    reg = regime_text(self.strike_net, self.flip)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: regime_text() takes 1 positional argument but 2 were given
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1195, in _update_cards
+    reg = regime_text(self.strike_net, self.flip)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: regime_text() takes 1 positional argument but 2 were given
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 949, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1195, in _update_cards
+    reg = regime_text(self.strike_net, self.flip)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: regime_text() takes 1 positional argument but 2 were given
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1207, in _update_cards
+    ctx = build_action_context(spot=spot, strike_net=self.strike_net, flip=self.flip, walls=self.walls, instrument=self.instrument, tf=self.tf, mode=self.mode)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: build_action_context() got an unexpected keyword argument 'strike_net'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1207, in _update_cards
+    ctx = build_action_context(spot=spot, strike_net=self.strike_net, flip=self.flip, walls=self.walls, instrument=self.instrument, tf=self.tf, mode=self.mode)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: build_action_context() got an unexpected keyword argument 'strike_net'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 949, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1207, in _update_cards
+    ctx = build_action_context(spot=spot, strike_net=self.strike_net, flip=self.flip, walls=self.walls, instrument=self.instrument, tf=self.tf, mode=self.mode)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: build_action_context() got an unexpected keyword argument 'strike_net'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1207, in _update_cards
+    ctx = build_action_context(spot=spot, strike_net=self.strike_net, flip=self.flip, walls=self.walls, instrument=self.instrument, tf=self.tf, mode=self.mode)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: build_action_context() got an unexpected keyword argument 'strike_net'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1207, in _update_cards
+    ctx = build_action_context(spot=spot, strike_net=self.strike_net, flip=self.flip, walls=self.walls, instrument=self.instrument, tf=self.tf, mode=self.mode)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: build_action_context() got an unexpected keyword argument 'strike_net'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 949, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1207, in _update_cards
+    ctx = build_action_context(spot=spot, strike_net=self.strike_net, flip=self.flip, walls=self.walls, instrument=self.instrument, tf=self.tf, mode=self.mode)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: build_action_context() got an unexpected keyword argument 'strike_net'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 949, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 949, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 949, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 927, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 949, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1208, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 933, in _refresh_worker
+    self._update_selection_cards(source="KEEP")
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1279, in _update_selection_cards
+    plan = plan_from_selected_level(spot=spot, level=lv, regime=reg, flip=self.flip, nearest_below=below, nearest_above=above)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\strategy.py", line 116, in plan_from_selected_level
+    target = min(spot, (na if na else spot))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<' not supported between instances of 'str' and 'float'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 948, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1252, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 948, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1252, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 970, in _refresh_worker
+    self._update_cards()
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1252, in _update_cards
+    self.k_action.setText(ctx.get("action_text","—"))
+                          ^^^^^^^
+AttributeError: 'tuple' object has no attribute 'get'
+
+{"ts": "2026-02-09 19:00:11", "module": "app", "message": "Unhandled exception", "exc_type": "AttributeError", "exc": "'DeskWindow' object has no attribute '_render_plan'", "context": {}}
+Traceback (most recent call last):
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 954, in _refresh_worker
+    self._update_selection_cards(source="KEEP")
+  File "C:\Users\diego\PycharmProjects\deribit_gex_desk_pro_v70\src\qt_app.py", line 1324, in _update_selection_cards
+    self.strategy_text.setPlainText(self._render_plan(plan))
+                                    ^^^^^^^^^^^^^^^^^
+AttributeError: 'DeskWindow' object has no attribute '_render_plan'
+
+
+{"ts": "2026-02-09 18:45:36", "module": "app", "message": "Unhandled exception", "exc_type": "AttributeError", "exc": "'DeskWindow' object has no attribute '_render_plan'", "context": {}}
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Desktop\Sistema_Cript\Sistema_Cripto\src\qt_app.py", line 1020, in _refresh_worker
+    self._update_selection_cards(source="KEEP")
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "C:\Users\Administrator\Desktop\Sistema_Cript\Sistema_Cripto\src\qt_app.py", line 1397, in _update_selection_cards
+    self.strategy_text.setPlainText(self._render_plan(plan))
+                                    ^^^^^^^^^^^^^^^^^
+AttributeError: 'DeskWindow' object has no attribute '_render_plan'
+
+
