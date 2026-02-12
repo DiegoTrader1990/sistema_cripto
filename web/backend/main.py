@@ -1137,7 +1137,6 @@ def alt_symbols(force: int = 0, limit: int = 5000, user: dict = Depends(get_user
         return {"ok": True, "n": len(ALTCOINS_DEFAULT), "symbols": ALTCOINS_DEFAULT, "warning": f"binance_symbols_failed: {e}"}
 
 
-@app.get("/api/alt/ohlc")
 def bybit_klines(symbol: str, tf: str, limit: int = 300) -> dict:
     interval = BYBIT_TF.get(tf, "15")
     url = BYBIT_BASE + "/v5/market/kline"
@@ -1168,6 +1167,7 @@ def bybit_klines(symbol: str, tf: str, limit: int = 300) -> dict:
     return {"t": t, "o": o, "h": h, "l": l, "c": c, "v": v}
 
 
+@app.get("/api/alt/ohlc")
 def alt_ohlc(symbol: str = "SOLUSDT", tf: str = "15", candles: int = 300, user: dict = Depends(get_user)):
     candles = max(120, min(1500, int(candles)))
     sym = (symbol or "SOLUSDT").upper().strip()
