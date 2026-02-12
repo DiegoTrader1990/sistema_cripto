@@ -513,6 +513,13 @@ def bot_status(user: dict = Depends(get_user)):
     return {"ok": True, "bot": _BOT, "paper_open": len(_PAPER.get("open") or []), "ts": int(time.time() * 1000)}
 
 
+@app.get("/api/bot/audit")
+def bot_audit(limit: int = 50, user: dict = Depends(get_user)):
+    limit = max(1, min(200, int(limit or 50)))
+    rows = list(_BOT.get("audit") or [])[:limit]
+    return {"ok": True, "rows": rows, "ts": int(time.time() * 1000)}
+
+
 @app.post("/api/bot/toggle")
 async def bot_toggle(req: Request, user: dict = Depends(get_user)):
     body = await req.json()
@@ -795,6 +802,13 @@ _BOT: dict[str, Any] = {
     "armed": True,
     "cooldown_sec": 15,
     "last_action_ms": 0,
+
+    # Telemetria/auditoria do bot
+    "last_touch_ms": 0,
+    "last_action": None,
+    "last_block_reason": None,
+    "last_block": None,
+    "audit": [],  # últimos eventos
 }
 
 _BOT_TASK: Optional[asyncio.Task] = None
@@ -818,6 +832,28 @@ def _paper_save():
         obj = {"open": _PAPER.get("open") or [], "history": _PAPER.get("history") or [], "ts": int(time.time() * 1000)}
         with open(PAPER_STATE_PATH, "w", encoding="utf-8") as f:
             json.dump(obj, f)
+    except Exception:
+        pass
+
+
+def _bot_audit(event: str, data: dict | None = None):
+    """Append evento de auditoria em memória (para UI/diagnóstico)."""
+    try:
+        now = int(time.time() * 1000)
+        rec = {"ts": now, "event": str(event), **(data or {})}
+        _BOT["last_touch_ms"] = now
+        _BOT.setdefault("audit", [])
+        _BOT["audit"].insert(0, rec)
+        _BOT["audit"] = (_BOT.get("audit") or [])[:200]
+    except Exception:
+        pass
+
+
+def _bot_block(reason: str, data: dict | None = None):
+    try:
+        _BOT["last_block_reason"] = str(reason)
+        _BOT["last_block"] = {"ts": int(time.time() * 1000), "reason": str(reason), **(data or {})}
+        _bot_audit("BLOCK", {"reason": str(reason), **(data or {})})
     except Exception:
         pass
 
@@ -1291,12 +1327,15 @@ async def _bot_loop():
     while True:
         await asyncio.sleep(2.0)
         try:
+            _BOT["last_touch_ms"] = int(time.time() * 1000)
             if not _BOT.get("enabled"):
+                _bot_block("DISABLED")
                 continue
 
             cur = str(_BOT.get("currency") or "BTC").upper()
             expiries = list(_BOT.get("expiries") or [])
             if not expiries:
+                _bot_block("NO_EXPIRIES")
                 continue
 
             perp = f"{cur}-PERPETUAL"
@@ -1305,6 +1344,7 @@ async def _bot_loop():
             s_last = float((tkr or {}).get("last_price") or 0.0)
             s_index = float((tkr or {}).get("index_price") or 0.0)
             if not s_now:
+                _bot_block("NO_SPOT", {"perp": perp})
                 continue
 
             prev = float(_BOT.get("last_spot") or s_now)
@@ -1367,22 +1407,27 @@ async def _bot_loop():
 
             # Entry
             if not _BOT.get("auto_entry"):
+                _bot_block("AUTO_ENTRY_OFF")
                 continue
             if not ((time.time() * 1000) - float(_BOT.get("last_action_ms") or 0) >= float(_BOT.get("cooldown_sec") or 15) * 1000.0):
+                _bot_block("COOLDOWN")
                 continue
 
             walls = _compute_walls_for_expiries(cur, expiries, float(_BOT.get("strike_range_pct") or 8.0), int(_BOT.get("walls_n") or 18))
             if not walls:
+                _bot_block("NO_WALLS")
                 continue
             eps = max(1.0, float(s_now) * 0.00005)
             touched = [k for k in walls if _touched(prev, s_now, float(k), eps)]
             if not touched:
+                _bot_block("NO_TOUCH", {"prev": prev, "now": s_now, "eps": eps, "walls_n": len(walls)})
                 continue
             k0 = min(touched, key=lambda kk: abs(float(kk) - float(s_now)))
 
             # Risk limits
             open_list = list(_PAPER.get("open") or [])
             if len(open_list) >= int(_BOT.get("max_positions") or 3):
+                _bot_block("MAX_POSITIONS", {"open": len(open_list)})
                 continue
             total_risk = 0.0
             for tt in open_list:
@@ -1391,12 +1436,14 @@ async def _bot_loop():
                 except Exception:
                     pass
             if total_risk >= float(_BOT.get("max_risk_usd") or 500.0):
+                _bot_block("MAX_RISK", {"risk": total_risk, "max": float(_BOT.get("max_risk_usd") or 500.0)})
                 continue
 
             # choose expiry for execution: nearest in list
             expiry_exec = expiries[0]
             # Do not re-enter same strike+expiry
             if any(str(tt.get("expiry")) == expiry_exec and float(tt.get("strike") or 0.0) == float(k0) for tt in open_list):
+                _bot_block("DUP_STRIKE", {"expiry": expiry_exec, "strike": float(k0)})
                 continue
 
             # Resolve instruments from chain
@@ -1407,12 +1454,14 @@ async def _bot_loop():
                     row = rr
                     break
             if not row:
+                _bot_block("NO_CHAIN_ROW", {"expiry": expiry_exec, "strike": float(k0)})
                 continue
             call = (row.get("call") or {})
             put = (row.get("put") or {})
             call_name = str(call.get("instrument_name") or "")
             put_name = str(put.get("instrument_name") or "")
             if not call_name or not put_name:
+                _bot_block("NO_INSTRUMENTS", {"expiry": expiry_exec, "strike": float(k0)})
                 continue
 
             qty = float(_BOT.get("qty") or 0.0) or 1.0
@@ -1430,6 +1479,7 @@ async def _bot_loop():
 
             # If this trade would exceed max risk, skip
             if (total_risk + float(entry_cost_ask)) > float(_BOT.get("max_risk_usd") or 500.0):
+                _bot_block("RISK_WOULD_EXCEED", {"risk": total_risk, "entry_cost": float(entry_cost_ask), "max": float(_BOT.get("max_risk_usd") or 500.0)})
                 continue
 
             trade = {
@@ -1455,6 +1505,8 @@ async def _bot_loop():
             }
             _PAPER["open"] = [trade] + open_list
             _BOT["last_action_ms"] = _now_ms()
+            _BOT["last_action"] = "ENTRY_OPEN"
+            _bot_audit("ENTRY_OPEN", {"currency": cur, "expiry": expiry_exec, "strike": float(k0), "cost": float(entry_cost_ask)})
             _paper_save()
 
         except Exception:

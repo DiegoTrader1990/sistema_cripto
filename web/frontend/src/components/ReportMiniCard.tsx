@@ -29,15 +29,18 @@ export default function ReportMiniCard({ currency }: { currency: 'BTC' | 'ETH' }
     async function tick() {
       try {
         setErr(null);
-        const [b, m, o] = await Promise.all([
+        const [b, m, o, a] = await Promise.all([
           apiGet('/api/bot/status'),
           apiGet(`/api/paper/mtm?currency=${encodeURIComponent(currency)}`),
           apiGet(`/api/paper/open_enriched?currency=${encodeURIComponent(currency)}`),
+          apiGet('/api/bot/audit?limit=8'),
         ]);
         if (!alive) return;
         setBot(b);
         setMtm(m);
         setOpen(o?.positions || o?.open || []);
+        // attach audit to bot object for display
+        (b as any).audit_rows = a?.rows || [];
         setTs(Date.now());
       } catch (e: any) {
         if (!alive) return;
@@ -54,8 +57,9 @@ export default function ReportMiniCard({ currency }: { currency: 'BTC' | 'ETH' }
   }, [currency]);
 
   const on = Boolean(bot?.enabled ?? bot?.bot_on ?? bot?.on);
-  const lastBlock = bot?.last_block_reason || bot?.block_reason || bot?.last_block || '';
-  const lastTouch = bot?.last_touch || bot?.last_action_ts || bot?.last_ts || '';
+  const lastBlock = bot?.last_block_reason || bot?.block_reason || bot?.last_block_reason || '';
+  const lastTouch = bot?.last_touch_ms || bot?.last_touch || bot?.last_action_ts || bot?.last_ts || '';
+  const auditRows = bot?.audit_rows || [];
 
   return (
     <div className="h-full">
@@ -89,6 +93,25 @@ export default function ReportMiniCard({ currency }: { currency: 'BTC' | 'ETH' }
                   <span className="text-slate-300">{p.instrument || p.symbol || '—'}</span>
                   <span className="text-slate-500"> · {p.side || p.dir || ''}</span>
                   <span className="text-slate-500"> · px={p.entry_price ?? p.price ?? p.entry ?? '—'}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div>—</div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <div className="text-[11px] text-slate-400">Bot audit (últimos eventos)</div>
+        <div className="mt-1 text-[11px] text-slate-500 max-h-[140px] overflow-auto border border-slate-800 rounded-xl p-2 bg-slate-950/30">
+          {auditRows?.length ? (
+            <ul className="space-y-1">
+              {auditRows.slice(0, 8).map((r: any, i: number) => (
+                <li key={i}>
+                  <span className="text-slate-300">{r.event}</span>
+                  <span className="text-slate-500"> · {r.reason || ''}</span>
+                  {r.strike ? <span className="text-slate-500"> · K={r.strike}</span> : null}
                 </li>
               ))}
             </ul>
