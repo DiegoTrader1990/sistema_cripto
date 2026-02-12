@@ -1439,75 +1439,108 @@ async def _bot_loop():
                 _bot_block("MAX_RISK", {"risk": total_risk, "max": float(_BOT.get("max_risk_usd") or 500.0)})
                 continue
 
-            # choose expiry for execution: nearest in list
-            expiry_exec = expiries[0]
-            # Do not re-enter same strike+expiry
-            if any(str(tt.get("expiry")) == expiry_exec and float(tt.get("strike") or 0.0) == float(k0) for tt in open_list):
-                _bot_block("DUP_STRIKE", {"expiry": expiry_exec, "strike": float(k0)})
-                continue
+            # choose expiries for execution: D1 + D2 (as requested)
+            expiries_exec = list(expiries[:2])
+            opened_any = False
 
-            # Resolve instruments from chain
-            ch = desk_chain(currency=cur, expiry=expiry_exec, strike_range_pct=float(_BOT.get("strike_range_pct") or 8.0), user={"u": "bot"})
-            row = None
-            for rr in (ch.get("per_strike") or []):
-                if float(rr.get("strike") or 0.0) == float(k0):
-                    row = rr
-                    break
-            if not row:
-                _bot_block("NO_CHAIN_ROW", {"expiry": expiry_exec, "strike": float(k0)})
-                continue
-            call = (row.get("call") or {})
-            put = (row.get("put") or {})
-            call_name = str(call.get("instrument_name") or "")
-            put_name = str(put.get("instrument_name") or "")
-            if not call_name or not put_name:
-                _bot_block("NO_INSTRUMENTS", {"expiry": expiry_exec, "strike": float(k0)})
-                continue
+            for idx, expiry_exec in enumerate(expiries_exec):
+                try:
+                    # Capacity check (we may open up to 2 positions)
+                    open_list = list(_PAPER.get("open") or [])
+                    if len(open_list) >= int(_BOT.get("max_positions") or 3):
+                        _bot_block("MAX_POSITIONS", {"open": len(open_list)})
+                        break
 
-            qty = float(_BOT.get("qty") or 0.0) or 1.0
+                    total_risk = 0.0
+                    for tt in open_list:
+                        try:
+                            total_risk += float(tt.get("entry_cost_usd") or 0.0)
+                        except Exception:
+                            pass
+                    if total_risk >= float(_BOT.get("max_risk_usd") or 500.0):
+                        _bot_block("MAX_RISK", {"risk": total_risk, "max": float(_BOT.get("max_risk_usd") or 500.0)})
+                        break
 
-            ask_call = float(call.get("ask_price") or 0.0)
-            ask_put = float(put.get("ask_price") or 0.0)
-            mid_call = float(call.get("bid_price") or 0.0) * 0.5 + float(call.get("ask_price") or 0.0) * 0.5
-            mid_put = float(put.get("bid_price") or 0.0) * 0.5 + float(put.get("ask_price") or 0.0) * 0.5
-            mark_call = float(call.get("mark_price") or 0.0)
-            mark_put = float(put.get("mark_price") or 0.0)
+                    # Do not re-enter same strike+expiry
+                    if any(str(tt.get("expiry")) == str(expiry_exec) and float(tt.get("strike") or 0.0) == float(k0) for tt in open_list):
+                        _bot_block("DUP_STRIKE", {"expiry": expiry_exec, "strike": float(k0)})
+                        continue
 
-            entry_cost_ask = (ask_call + ask_put) * s_now * qty
-            entry_cost_mid = (mid_call + mid_put) * s_now * qty
-            entry_cost_mark = (mark_call + mark_put) * s_now * qty
+                    # Resolve instruments from chain for this expiry
+                    ch = desk_chain(currency=cur, expiry=expiry_exec, strike_range_pct=float(_BOT.get("strike_range_pct") or 8.0), user={"u": "bot"})
+                    row = None
+                    for rr in (ch.get("per_strike") or []):
+                        if float(rr.get("strike") or 0.0) == float(k0):
+                            row = rr
+                            break
+                    if not row:
+                        _bot_block("NO_CHAIN_ROW", {"expiry": expiry_exec, "strike": float(k0)})
+                        continue
 
-            # If this trade would exceed max risk, skip
-            if (total_risk + float(entry_cost_ask)) > float(_BOT.get("max_risk_usd") or 500.0):
-                _bot_block("RISK_WOULD_EXCEED", {"risk": total_risk, "entry_cost": float(entry_cost_ask), "max": float(_BOT.get("max_risk_usd") or 500.0)})
-                continue
+                    call = (row.get("call") or {})
+                    put = (row.get("put") or {})
+                    call_name = str(call.get("instrument_name") or "")
+                    put_name = str(put.get("instrument_name") or "")
+                    if not call_name or not put_name:
+                        _bot_block("NO_INSTRUMENTS", {"expiry": expiry_exec, "strike": float(k0)})
+                        continue
 
-            trade = {
-                "id": f"bot-{_now_ms()}",
-                "src": "BOT",
-                "currency": cur,
-                "expiry": expiry_exec,
-                "expiries_used": expiries,
-                "strike": float(k0),
-                "qty": qty,
-                "entry_ts": _now_ms(),
-                "entry_spot": float(s_now),
-                "entry_spot_index": s_index,
-                "entry_spot_last": s_last,
-                "callName": call_name,
-                "putName": put_name,
-                "entry_cost_usd": float(entry_cost_ask),
-                "entry_cost_ask": float(entry_cost_ask),
-                "entry_cost_mid": float(entry_cost_mid),
-                "entry_cost_mark": float(entry_cost_mark),
-                "entry_call": {"bid": float(call.get("bid_price") or 0.0), "ask": ask_call, "mark": mark_call, "iv": float(call.get("mark_iv") or 0.0)},
-                "entry_put": {"bid": float(put.get("bid_price") or 0.0), "ask": ask_put, "mark": mark_put, "iv": float(put.get("mark_iv") or 0.0)},
-            }
-            _PAPER["open"] = [trade] + open_list
-            _BOT["last_action_ms"] = _now_ms()
-            _BOT["last_action"] = "ENTRY_OPEN"
-            _bot_audit("ENTRY_OPEN", {"currency": cur, "expiry": expiry_exec, "strike": float(k0), "cost": float(entry_cost_ask)})
-            _paper_save()
+                    qty = float(_BOT.get("qty") or 0.0) or 1.0
+
+                    ask_call = float(call.get("ask_price") or 0.0)
+                    ask_put = float(put.get("ask_price") or 0.0)
+                    mid_call = float(call.get("bid_price") or 0.0) * 0.5 + float(call.get("ask_price") or 0.0) * 0.5
+                    mid_put = float(put.get("bid_price") or 0.0) * 0.5 + float(put.get("ask_price") or 0.0) * 0.5
+                    mark_call = float(call.get("mark_price") or 0.0)
+                    mark_put = float(put.get("mark_price") or 0.0)
+
+                    entry_cost_ask = (ask_call + ask_put) * s_now * qty
+                    entry_cost_mid = (mid_call + mid_put) * s_now * qty
+                    entry_cost_mark = (mark_call + mark_put) * s_now * qty
+
+                    # If this trade would exceed max risk, skip
+                    if (total_risk + float(entry_cost_ask)) > float(_BOT.get("max_risk_usd") or 500.0):
+                        _bot_block(
+                            "RISK_WOULD_EXCEED",
+                            {"risk": total_risk, "entry_cost": float(entry_cost_ask), "max": float(_BOT.get("max_risk_usd") or 500.0), "expiry": expiry_exec},
+                        )
+                        continue
+
+                    trade = {
+                        "id": f"bot-{_now_ms()}-{idx+1}",
+                        "src": "BOT",
+                        "currency": cur,
+                        "expiry": expiry_exec,
+                        "expiries_used": expiries,
+                        "strike": float(k0),
+                        "qty": qty,
+                        "entry_ts": _now_ms(),
+                        "entry_spot": float(s_now),
+                        "entry_spot_index": s_index,
+                        "entry_spot_last": s_last,
+                        "callName": call_name,
+                        "putName": put_name,
+                        "entry_cost_usd": float(entry_cost_ask),
+                        "entry_cost_ask": float(entry_cost_ask),
+                        "entry_cost_mid": float(entry_cost_mid),
+                        "entry_cost_mark": float(entry_cost_mark),
+                        "entry_call": {"bid": float(call.get("bid_price") or 0.0), "ask": ask_call, "mark": mark_call, "iv": float(call.get("mark_iv") or 0.0)},
+                        "entry_put": {"bid": float(put.get("bid_price") or 0.0), "ask": ask_put, "mark": mark_put, "iv": float(put.get("mark_iv") or 0.0)},
+                    }
+
+                    _PAPER["open"] = [trade] + open_list
+                    opened_any = True
+                    _BOT["last_action"] = "ENTRY_OPEN"
+                    _bot_audit("ENTRY_OPEN", {"currency": cur, "expiry": expiry_exec, "strike": float(k0), "cost": float(entry_cost_ask)})
+                    _paper_save()
+
+                except Exception:
+                    continue
+
+            if opened_any:
+                _BOT["last_action_ms"] = _now_ms()
+            else:
+                _bot_block("NO_ENTRY_EXECUTED", {"strike": float(k0), "expiries": expiries_exec})
 
         except Exception:
             # keep bot alive
