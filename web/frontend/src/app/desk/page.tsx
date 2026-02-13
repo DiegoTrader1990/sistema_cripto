@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 
 import CandlesChart, { type Ohlc } from '@/components/CandlesChart';
 import PaperBoxCard from '@/components/PaperBoxCard';
-import ResponsiveDeskLayout from '@/components/ResponsiveDeskLayout';
+import PremiumDeskLayout from '@/components/PremiumDeskLayout';
 import DeskLayoutControls from '@/components/DeskLayoutControls';
 import StrategyPlannerCard from '@/components/StrategyPlannerCard';
 import ReportMiniCard from '@/components/ReportMiniCard';
@@ -56,7 +56,7 @@ export default function DeskPage() {
 
   // responsive
   const [view, setView] = useState<'DESKTOP' | 'TABLET' | 'MOBILE'>('DESKTOP');
-  const [mobileTab, setMobileTab] = useState<'CHART' | 'DETAILS' | 'PLANNER' | 'PAPER' | 'REPORT'>('CHART');
+  const [mobileTab, setMobileTab] = useState<'CHART' | 'DETAILS' | 'PLANNER' | 'PAPER' | 'REPORT'>('CHART'); // legacy (not used in PremiumDeskLayout)
 
   // options/gex
   const [expiry, setExpiry] = useState<string>('');
@@ -665,15 +665,13 @@ export default function DeskPage() {
         );
 
         return (
-          <ResponsiveDeskLayout
+          <PremiumDeskLayout
             view={view}
-            mobileTab={mobileTab}
-            setMobileTab={setMobileTab}
             chart={chartNode}
-            details={detailsNode}
-            paper={paperNode}
-            planner={plannerNode}
-            report={reportNode}
+            selection={detailsNode}
+            options={plannerNode}
+            simulator={paperNode}
+            operator={reportNode}
           />
         );
       })()}
