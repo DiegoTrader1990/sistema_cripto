@@ -528,6 +528,7 @@ async def bot_toggle(req: Request, user: dict = Depends(get_user)):
     if "auto_entry" in body:
         _BOT["auto_entry"] = bool(body.get("auto_entry"))
     _BOT["last_action_ms"] = int(time.time() * 1000)
+    _bot_save()
     return {"ok": True, "bot": _BOT}
 
 
@@ -577,6 +578,7 @@ async def bot_config(req: Request, user: dict = Depends(get_user)):
 
     _BOT["last_action_ms"] = int(time.time() * 1000)
     _bot_audit("CONFIG", {"currency": cur, "expiries_n": len(expiries)})
+    _bot_save()
     return {"ok": True, "bot": _BOT}
 
 
@@ -805,6 +807,7 @@ _WALLS_CACHE: dict[str, Any] = {}
 
 # -------------------- Paper (server-side) + BOT state --------------------
 PAPER_STATE_PATH = os.environ.get("PAPER_STATE_PATH", "./paper_state.json")
+BOT_STATE_PATH = os.environ.get("BOT_STATE_PATH", "./bot_state.json")
 
 _PAPER: dict[str, Any] = {
     "open": [],  # list[dict]
@@ -859,6 +862,86 @@ def _paper_load():
         if isinstance(obj, dict):
             _PAPER["open"] = list(obj.get("open") or [])
             _PAPER["history"] = list(obj.get("history") or [])
+    except Exception:
+        pass
+
+
+def _bot_load():
+    try:
+        if not os.path.exists(BOT_STATE_PATH):
+            return
+        with open(BOT_STATE_PATH, "r", encoding="utf-8") as f:
+            obj = json.load(f) or {}
+        if not isinstance(obj, dict):
+            return
+
+        # only allowlisted keys (avoid loading garbage)
+        allow = {
+            "enabled",
+            "auto_entry",
+            "currency",
+            "expiries",
+            "strike_range_pct",
+            "walls_n",
+            "tp_move_pct",
+            "sl_pnl_pct",
+            "max_positions",
+            "max_risk_usd",
+            "qty",
+            "spot_src",
+            "cooldown_sec",
+            "dte_ranges_exec",
+            "wall_rank_max",
+            "near_flip_pct",
+            "atr_tf",
+            "atr_n",
+            "atr_min_pct",
+            "trade_windows_utc",
+        }
+        for k in allow:
+            if k in obj:
+                _BOT[k] = obj[k]
+
+        # normalize types
+        _BOT["enabled"] = bool(_BOT.get("enabled"))
+        _BOT["auto_entry"] = bool(_BOT.get("auto_entry"))
+        _BOT["currency"] = str(_BOT.get("currency") or "BTC").upper()
+        ex = _BOT.get("expiries") or []
+        if not isinstance(ex, list):
+            ex = []
+        _BOT["expiries"] = sorted({str(x) for x in ex if x})
+
+    except Exception:
+        pass
+
+
+def _bot_save():
+    try:
+        obj = {
+            "enabled": bool(_BOT.get("enabled")),
+            "auto_entry": bool(_BOT.get("auto_entry")),
+            "currency": str(_BOT.get("currency") or "BTC").upper(),
+            "expiries": list(_BOT.get("expiries") or []),
+            "strike_range_pct": float(_BOT.get("strike_range_pct") or 8.0),
+            "walls_n": int(_BOT.get("walls_n") or 18),
+            "tp_move_pct": float(_BOT.get("tp_move_pct") or 1.5),
+            "sl_pnl_pct": float(_BOT.get("sl_pnl_pct") or -60.0),
+            "max_positions": int(_BOT.get("max_positions") or 3),
+            "max_risk_usd": float(_BOT.get("max_risk_usd") or 500.0),
+            "qty": float(_BOT.get("qty") or 0.0),
+            "spot_src": str(_BOT.get("spot_src") or "index"),
+            "cooldown_sec": float(_BOT.get("cooldown_sec") or 15),
+            "dte_ranges_exec": str(_BOT.get("dte_ranges_exec") or "1-2"),
+            "wall_rank_max": int(_BOT.get("wall_rank_max") or 8),
+            "near_flip_pct": float(_BOT.get("near_flip_pct") or 1.2),
+            "atr_tf": str(_BOT.get("atr_tf") or "15"),
+            "atr_n": int(_BOT.get("atr_n") or 14),
+            "atr_min_pct": float(_BOT.get("atr_min_pct") or 0.35),
+            "trade_windows_utc": list(_BOT.get("trade_windows_utc") or []),
+            "ts": int(time.time() * 1000),
+        }
+        with open(BOT_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(obj, f)
     except Exception:
         pass
 
@@ -1766,6 +1849,7 @@ async def _bot_loop():
 async def _startup():
     global _BOT_TASK
     _paper_load()
+    _bot_load()
     if not _BOT_TASK:
         _BOT_TASK = asyncio.create_task(_bot_loop())
 
@@ -1775,6 +1859,10 @@ async def _shutdown():
     global _BOT_TASK
     try:
         _paper_save()
+    except Exception:
+        pass
+    try:
+        _bot_save()
     except Exception:
         pass
     if _BOT_TASK:
