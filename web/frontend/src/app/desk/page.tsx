@@ -10,6 +10,8 @@ import DeskLayoutControls from '@/components/DeskLayoutControls';
 import StrategyPlannerCard from '@/components/StrategyPlannerCard';
 import ReportMiniCard from '@/components/ReportMiniCard';
 import SpotPulseCard from '@/components/SpotPulseCard';
+import BotDecisionCard from '@/components/BotDecisionCard';
+import BotControlCard from '@/components/BotControlCard';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
@@ -615,7 +617,11 @@ export default function DeskPage() {
         );
 
         const reportNode = (
-          <ReportMiniCard currency={instrument.startsWith('ETH') ? 'ETH' : 'BTC'} />
+          <div className="space-y-4">
+            <BotDecisionCard currency={instrument.startsWith('ETH') ? 'ETH' : 'BTC'} />
+            <BotControlCard currency={instrument.startsWith('ETH') ? 'ETH' : 'BTC'} />
+            <ReportMiniCard currency={instrument.startsWith('ETH') ? 'ETH' : 'BTC'} />
+          </div>
         );
 
         const paperNode = (
