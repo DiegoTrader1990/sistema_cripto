@@ -56,6 +56,7 @@ function explainBlock(reason: string, block: any) {
 
 export default function BotDecisionCard({ currency }: { currency: string }) {
   const [bot, setBot] = useState<any>(null);
+  const [paperOpen, setPaperOpen] = useState<number | null>(null);
   const [audit, setAudit] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
@@ -67,6 +68,7 @@ export default function BotDecisionCard({ currency }: { currency: string }) {
         apiGet('/api/bot/audit?limit=10') as Promise<BotAuditResp>,
       ]);
       setBot(s?.bot || null);
+      setPaperOpen(typeof s?.paper_open === 'number' ? s.paper_open : null);
       setAudit(a?.rows || []);
     } catch (e: any) {
       setErr(String(e?.message || e));
@@ -113,7 +115,7 @@ export default function BotDecisionCard({ currency }: { currency: string }) {
             {status.headline}{' '}
             {status.enabled && status.auto ? <span className="text-emerald-300">(auto)</span> : <span className="text-slate-400">(sem auto)</span>}
           </div>
-          <div className="text-[11px] text-slate-500">open: {bot?.paper_open ?? '—'}</div>
+          <div className="text-[11px] text-slate-500">open: {paperOpen ?? '—'}</div>
         </div>
 
         <div className="mt-2 text-xs text-slate-300">
