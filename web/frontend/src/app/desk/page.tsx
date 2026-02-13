@@ -19,15 +19,25 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
 type OhlcWithVol = Ohlc & { v?: number[] };
 
-async function apiGet(path: string) {
+async function apiGet(path: string, timeoutMs: number = 12000) {
   const tok = localStorage.getItem('token') || '';
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${tok}` },
-    cache: 'no-store',
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error || 'request failed');
-  return data;
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), Math.max(2000, timeoutMs));
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${tok}` },
+      cache: 'no-store',
+      signal: ctl.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.detail || data?.error || 'request failed');
+    return data;
+  } catch (e: any) {
+    if (String(e?.name || '') === 'AbortError') throw new Error('timeout (backend pode estar acordando)');
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 export default function DeskPage() {
@@ -90,11 +100,15 @@ export default function DeskPage() {
       );
       setOhlc(data.ohlc);
     } catch (e: any) {
-      setErr(String(e?.message || e));
-      if (String(e?.message || '').includes('unauthorized')) {
+      const msg = String(e?.message || e);
+      setErr(msg);
+      if (msg.toLowerCase().includes('unauthorized')) {
         localStorage.removeItem('token');
         r.push('/login');
       }
+      // ensure boot overlay doesn't get stuck if backend hangs
+      setBootMsg(`Erro ao carregar gráfico: ${msg}`);
+      setBootPct(0);
       setBootLoading(false);
       return;
     }
