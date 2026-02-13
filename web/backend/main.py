@@ -535,12 +535,17 @@ async def bot_toggle(req: Request, user: dict = Depends(get_user)):
 async def bot_config(req: Request, user: dict = Depends(get_user)):
     body = await req.json()
     cur = str(body.get("currency") or _BOT.get("currency") or "BTC").upper()
+
     expiries = body.get("expiries") or []
     if not isinstance(expiries, list):
         expiries = []
     expiries = [str(x) for x in expiries if x]
+    expiries = sorted(set(expiries))
+
     _BOT["currency"] = cur
     _BOT["expiries"] = expiries
+
+    # Core bot params
     _BOT["strike_range_pct"] = float(body.get("strike_range_pct") or _BOT.get("strike_range_pct") or 8.0)
     _BOT["walls_n"] = int(body.get("walls_n") or _BOT.get("walls_n") or 18)
     _BOT["tp_move_pct"] = float(body.get("tp_move_pct") or _BOT.get("tp_move_pct") or 1.5)
@@ -549,7 +554,29 @@ async def bot_config(req: Request, user: dict = Depends(get_user)):
     _BOT["max_risk_usd"] = float(body.get("max_risk_usd") or _BOT.get("max_risk_usd") or 500.0)
     _BOT["qty"] = float(body.get("qty") or _BOT.get("qty") or 0.0)
     _BOT["spot_src"] = str(body.get("spot_src") or _BOT.get("spot_src") or "index")
+    _BOT["cooldown_sec"] = float(body.get("cooldown_sec") or _BOT.get("cooldown_sec") or 15)
+
+    # Operacional / Edge gates
+    if "dte_ranges_exec" in body:
+        _BOT["dte_ranges_exec"] = str(body.get("dte_ranges_exec") or "").strip() or _BOT.get("dte_ranges_exec") or "1-2"
+    if "wall_rank_max" in body:
+        _BOT["wall_rank_max"] = int(body.get("wall_rank_max") or _BOT.get("wall_rank_max") or 8)
+    if "near_flip_pct" in body:
+        _BOT["near_flip_pct"] = float(body.get("near_flip_pct") or _BOT.get("near_flip_pct") or 1.2)
+    if "atr_tf" in body:
+        _BOT["atr_tf"] = str(body.get("atr_tf") or _BOT.get("atr_tf") or "15")
+    if "atr_n" in body:
+        _BOT["atr_n"] = int(body.get("atr_n") or _BOT.get("atr_n") or 14)
+    if "atr_min_pct" in body:
+        _BOT["atr_min_pct"] = float(body.get("atr_min_pct") or _BOT.get("atr_min_pct") or 0.35)
+    if "trade_windows_utc" in body:
+        tw = body.get("trade_windows_utc") or []
+        if not isinstance(tw, list):
+            tw = []
+        _BOT["trade_windows_utc"] = [str(x) for x in tw if str(x).strip()]
+
     _BOT["last_action_ms"] = int(time.time() * 1000)
+    _bot_audit("CONFIG", {"currency": cur, "expiries_n": len(expiries)})
     return {"ok": True, "bot": _BOT}
 
 
@@ -802,6 +829,15 @@ _BOT: dict[str, Any] = {
     "armed": True,
     "cooldown_sec": 15,
     "last_action_ms": 0,
+
+    # Operacional (gates p/ edge)
+    "dte_ranges_exec": "1-2",  # executar D1+D2
+    "wall_rank_max": 8,        # só walls top-N
+    "near_flip_pct": 1.2,      # exige spot perto do flip (%%)
+    "atr_tf": "15",
+    "atr_n": 14,
+    "atr_min_pct": 0.35,       # ATR%% mínimo pra operar
+    "trade_windows_utc": [],   # ex: ["12:00-18:00","19:00-22:00"] vazio=sempre
 
     # Telemetria/auditoria do bot
     "last_touch_ms": 0,
@@ -1323,6 +1359,139 @@ def _open_trade_exists(currency: str, expiry: str, strike: float) -> bool:
     return False
 
 
+def _parse_ranges(s: str) -> list[tuple[int, int]]:
+    ranges: list[tuple[int, int]] = []
+    try:
+        s2 = (s or "").strip()
+        if s2:
+            for part in s2.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                if "-" in part:
+                    a, b = part.split("-", 1)
+                    ranges.append((int(float(a)), int(float(b))))
+                else:
+                    v = int(float(part))
+                    ranges.append((v, v))
+    except Exception:
+        ranges = []
+    return ranges
+
+
+def _pick_expiries_by_dte(currency: str, dte_ranges: str, max_n: int = 2) -> list[str]:
+    """Pick next expiries matching a DTE range string like '1-2' (days)."""
+    try:
+        max_n = max(1, min(8, int(max_n)))
+        ranges = _parse_ranges(dte_ranges)
+        if not ranges:
+            ranges = [(1, 2)]
+        inst = deribit_get("/public/get_instruments", {"currency": currency, "kind": "option", "expired": "false"}) or []
+        now_ms = int(time.time() * 1000)
+        exp_ts: dict[str, int] = {}
+        for x in inst:
+            try:
+                ts = int(x.get("expiration_timestamp") or 0)
+                if not ts:
+                    continue
+                ex = _expiry_str_from_ts_ms(ts)
+                if not ex:
+                    continue
+                exp_ts[ex] = min(int(exp_ts.get(ex) or ts), ts)
+            except Exception:
+                continue
+        expiries = sorted(exp_ts.items(), key=lambda kv: kv[1])
+        out: list[str] = []
+        for ex, ts in expiries:
+            dte = int(round((ts - now_ms) / (24 * 3600 * 1000)))
+            ok = False
+            for a, b in ranges:
+                if dte >= a and dte <= b:
+                    ok = True
+                    break
+            if ok:
+                out.append(ex)
+            if len(out) >= max_n:
+                break
+        return out
+    except Exception:
+        return []
+
+
+def _in_trade_window_utc(windows: list[str] | None) -> bool:
+    """windows: ['HH:MM-HH:MM', ...] in UTC. Empty => always."""
+    try:
+        if not windows:
+            return True
+        now = datetime.datetime.utcnow().time()
+        for w in windows:
+            ww = str(w or "").strip()
+            if not ww or "-" not in ww:
+                continue
+            a, b = ww.split("-", 1)
+            ah, am = [int(x) for x in a.strip().split(":")]
+            bh, bm = [int(x) for x in b.strip().split(":")]
+            ta = datetime.time(hour=ah, minute=am)
+            tb = datetime.time(hour=bh, minute=bm)
+            if ta <= tb:
+                if now >= ta and now <= tb:
+                    return True
+            else:
+                # wraps midnight
+                if now >= ta or now <= tb:
+                    return True
+        return False
+    except Exception:
+        return True
+
+
+def _atr_pct_for_perp(currency: str, tf: str, n: int) -> float | None:
+    try:
+        n = max(5, min(100, int(n)))
+        instrument = f"{currency}-PERPETUAL"
+        client = DeribitPublicClient(timeout=7.0)
+        # reuse logic similar to desk_ohlc
+        tf_sec = 60
+        if tf == "1":
+            tf_sec = 60
+        elif tf == "5":
+            tf_sec = 5 * 60
+        elif tf == "15":
+            tf_sec = 15 * 60
+        elif tf == "60":
+            tf_sec = 60 * 60
+        elif tf == "240":
+            tf_sec = 4 * 60 * 60
+        else:
+            tf = "1D"
+            tf_sec = 24 * 60 * 60
+        candles = max(120, n + 50)
+        now_ms = int(time.time() * 1000)
+        start_ms = now_ms - int(candles * tf_sec * 1000)
+        chart, _ = client.get_tradingview_chart_data(instrument, tf, start_ms, now_ms)
+        h = chart.get("high") or chart.get("h") or []
+        l = chart.get("low") or chart.get("l") or []
+        c = chart.get("close") or chart.get("c") or []
+        if len(c) < n + 2:
+            return None
+        # compute TR
+        tr: list[float] = []
+        for i in range(1, len(c)):
+            hi = float(h[i] or 0.0)
+            lo = float(l[i] or 0.0)
+            pc = float(c[i - 1] or 0.0)
+            tr.append(max(hi - lo, abs(hi - pc), abs(lo - pc)))
+        if len(tr) < n:
+            return None
+        atr = sum(tr[-n:]) / float(n)
+        last = float(c[-1] or 0.0)
+        if last <= 0:
+            return None
+        return (atr / last) * 100.0
+    except Exception:
+        return None
+
+
 async def _bot_loop():
     while True:
         await asyncio.sleep(2.0)
@@ -1409,20 +1578,65 @@ async def _bot_loop():
             if not _BOT.get("auto_entry"):
                 _bot_block("AUTO_ENTRY_OFF")
                 continue
+
+            # Trade window gate (UTC)
+            if not _in_trade_window_utc(list(_BOT.get("trade_windows_utc") or [])):
+                _bot_block("OUT_OF_WINDOW")
+                continue
+
             if not ((time.time() * 1000) - float(_BOT.get("last_action_ms") or 0) >= float(_BOT.get("cooldown_sec") or 15) * 1000.0):
                 _bot_block("COOLDOWN")
                 continue
 
-            walls = _compute_walls_for_expiries(cur, expiries, float(_BOT.get("strike_range_pct") or 8.0), int(_BOT.get("walls_n") or 18))
+            # Build walls using DTE ranges (D1+D2 by default) + wall rank
+            dte_ranges_exec = str(_BOT.get("dte_ranges_exec") or "1-2")
+            walls_resp = desk_walls(currency=cur, mode="all", strike_range_pct=float(_BOT.get("strike_range_pct") or 8.0), dte_ranges=dte_ranges_exec, max_expiries=0, expiries_csv="", user={"u": "bot"})
+            walls_list = list((walls_resp or {}).get("walls") or [])
+            if not walls_list:
+                _bot_block("NO_WALLS")
+                continue
+
+            # wall_rank_max: only keep top-N walls
+            wall_rank_max = int(_BOT.get("wall_rank_max") or 8)
+            walls_list = walls_list[: max(1, min(24, wall_rank_max))]
+            walls = [float(w.get("strike") or 0.0) for w in walls_list if float(w.get("strike") or 0.0) > 0]
             if not walls:
                 _bot_block("NO_WALLS")
                 continue
+
+            flip = float((walls_resp or {}).get("flip") or 0.0)
+            near_flip_pct = float(_BOT.get("near_flip_pct") or 0.0)
+            if flip and near_flip_pct and s_now:
+                dist_pct = abs(float(s_now) - float(flip)) / float(s_now) * 100.0
+                if dist_pct > near_flip_pct:
+                    _bot_block("FAR_FROM_FLIP", {"dist_pct": dist_pct, "near_flip_pct": near_flip_pct, "flip": flip})
+                    continue
+
+            # ATR gate (perp)
+            atr_tf = str(_BOT.get("atr_tf") or "15")
+            atr_n = int(_BOT.get("atr_n") or 14)
+            atr_min_pct = float(_BOT.get("atr_min_pct") or 0.0)
+            if atr_min_pct > 0:
+                atr_pct = _atr_pct_for_perp(cur, atr_tf, atr_n)
+                if atr_pct is None:
+                    _bot_block("ATR_UNAVAILABLE")
+                    continue
+                if float(atr_pct) < float(atr_min_pct):
+                    _bot_block("ATR_TOO_LOW", {"atr_pct": float(atr_pct), "min": float(atr_min_pct), "tf": atr_tf, "n": atr_n})
+                    continue
+
             eps = max(1.0, float(s_now) * 0.00005)
             touched = [k for k in walls if _touched(prev, s_now, float(k), eps)]
             if not touched:
                 _bot_block("NO_TOUCH", {"prev": prev, "now": s_now, "eps": eps, "walls_n": len(walls)})
                 continue
             k0 = min(touched, key=lambda kk: abs(float(kk) - float(s_now)))
+
+            # Expiries to execute (D1+D2 by DTE ranges)
+            expiries_exec = _pick_expiries_by_dte(cur, dte_ranges_exec, max_n=2) or list(expiries[:2])
+            if not expiries_exec:
+                _bot_block("NO_EXPIRIES_EXEC")
+                continue
 
             # Risk limits
             open_list = list(_PAPER.get("open") or [])
@@ -1440,7 +1654,8 @@ async def _bot_loop():
                 continue
 
             # choose expiries for execution: D1 + D2 (as requested)
-            expiries_exec = list(expiries[:2])
+            # NOTE: expiries_exec already computed above by DTE range; keep a fallback here for safety.
+            expiries_exec = list(expiries_exec or expiries[:2])
             opened_any = False
 
             for idx, expiry_exec in enumerate(expiries_exec):
