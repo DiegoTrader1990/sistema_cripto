@@ -269,5 +269,12 @@ export default function CandlesChart({
     };
   }, [onPickPrice, levels?.length]);
 
-  return <div ref={ref} className={className || "w-full h-[440px]"} style={{ touchAction: 'none' }} />;
+  return (
+  <div
+    ref={ref}
+    className={className || "w-full h-[520px]"}
+    style={{ touchAction: 'none', minHeight: 280 }}
+  />
+);
+
 }
