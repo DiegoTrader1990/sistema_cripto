@@ -12,6 +12,8 @@ import ReportMiniCard from '@/components/ReportMiniCard';
 import SpotPulseCard from '@/components/SpotPulseCard';
 import BotDecisionCard from '@/components/BotDecisionCard';
 import BotControlCard from '@/components/BotControlCard';
+import NextTriggerCard from '@/components/NextTriggerCard';
+import PositionsPnlCard from '@/components/PositionsPnlCard';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
 
@@ -619,6 +621,8 @@ export default function DeskPage() {
         const reportNode = (
           <div className="space-y-4">
             <BotDecisionCard currency={instrument.startsWith('ETH') ? 'ETH' : 'BTC'} />
+            <NextTriggerCard currency={instrument.startsWith('ETH') ? 'ETH' : 'BTC'} />
+            <PositionsPnlCard currency={instrument.startsWith('ETH') ? 'ETH' : 'BTC'} />
             <BotControlCard currency={instrument.startsWith('ETH') ? 'ETH' : 'BTC'} />
             <ReportMiniCard currency={instrument.startsWith('ETH') ? 'ETH' : 'BTC'} />
           </div>
